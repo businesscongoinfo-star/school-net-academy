@@ -208,6 +208,35 @@ et renvoient `{ items, stats }`. Les erreurs sont renvoyées au format
 
 ---
 
+## Démo publique (GitHub Pages / CDN GitHub)
+
+Une version **100 % statique** de l'interface est publiée dans `docs/` : elle rejoue l'API du
+serveur dans le navigateur à partir d'un instantané de données (`web/public/demo/snapshot.json`).
+Idéal pour montrer le produit sans serveur, y compris sur un téléphone.
+
+- URL GitHub Pages (après activation) : `https://businesscongoinfo-star.github.io/school-net-academy/`
+- Activation : **Settings → Pages → Source : Deploy from a branch → Branch :
+  `arena/ccb67a6c-school-net-academy` (ou `main` après fusion) → dossier `/docs` → Save**.
+- Aperçu immédiat sans configuration : CDN GitHub, par exemple
+  `https://raw.githack.com/businesscongoinfo-star/school-net-academy/arena/ccb67a6c-school-net-academy/docs/index.html`
+
+Limites de la démo statique : les écritures (création, modification, suppression, pointage…)
+sont **simulées en mémoire** — elles fonctionnent et s'affichent, mais sont perdues au
+rechargement ; aucune donnée ne quitte le navigateur. La version serveur (Node + SQLite)
+reste la référence, avec persistance réelle.
+
+Régénérer la démo :
+
+```bash
+node server/seed.js --reset        # données de démonstration
+npm start                          # serveur sur :3000
+npm run snapshot                   # → web/public/demo/snapshot.json
+npm run build:demo                 # → docs/ (build statique, routage par ancre)
+node scripts/test-demo-mock.mjs    # vérifie l'API simulée (≈35 routes)
+```
+
+---
+
 ## Déploiement
 
 L'application est un **serveur Node.js** (Express + SQLite) qui sert l'API et l'interface compilée

@@ -164,6 +164,18 @@ export function AppShell() {
       </aside>
 
       <div className="main">
+        {import.meta.env.VITE_DEMO === '1' && (
+          <div className="demo-strip">
+            <span className="demo-dot" />
+            <span className="demo-strip-text">
+              <strong>Démo statique</strong> · données de démonstration, écritures simulées dans le navigateur
+              (réinitialisées au rechargement).
+            </span>
+            <button type="button" className="demo-strip-btn" onClick={handleLogout}>
+              Changer de profil
+            </button>
+          </div>
+        )}
         <header className="topbar">
           <button className="icon-btn mobile-toggle" onClick={() => setSidebarOpen(true)} aria-label="Ouvrir le menu">
             <Menu size={19} />

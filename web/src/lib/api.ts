@@ -23,8 +23,22 @@ export function onUnauthorized(listener: (status: number) => void) {
   return () => listeners.delete(listener);
 }
 
+const DEMO = import.meta.env.VITE_DEMO === '1';
+
 export async function api<T>(path: string, options: Options = {}): Promise<T> {
   const { method = 'GET', body, signal } = options;
+
+  if (DEMO) {
+    try {
+      const { demoRequest } = await import('../demo/mock');
+      return await demoRequest<T>(method, path, body);
+    } catch (error) {
+      const status = (error as { status?: number }).status ?? 500;
+      if (status === 401) listeners.forEach((listener) => listener(401));
+      throw new ApiError((error as Error).message || 'Une erreur est survenue.', status);
+    }
+  }
+
   const res = await fetch(`/api${path}`, {
     method,
     signal,

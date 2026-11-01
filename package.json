@@ -8,11 +8,13 @@
     "dev": "node --watch server/index.js",
     "dev:web": "vite web",
     "build": "vite build web",
+    "build:demo": "DEMO=1 VITE_DEMO=1 vite build web",
     "start": "node server/index.js",
     "seed": "node server/seed.js",
     "seed:reset": "node server/seed.js --reset",
     "typecheck": "tsc --noEmit -p web/tsconfig.json",
-    "prestart": "node scripts/ensure-build.mjs"
+    "prestart": "node scripts/ensure-build.mjs",
+    "snapshot": "node scripts/build-demo-snapshot.mjs"
   },
   "engines": {
     "node": ">=22.5"
