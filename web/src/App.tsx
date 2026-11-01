@@ -18,6 +18,12 @@ const Courses = lazy(() => import('./pages/Courses').then((module) => ({ default
 const Announcements = lazy(() => import('./pages/Announcements').then((module) => ({ default: module.Announcements })));
 const Results = lazy(() => import('./pages/Results').then((module) => ({ default: module.Results })));
 const Settings = lazy(() => import('./pages/Settings').then((module) => ({ default: module.Settings })));
+const Faculties = lazy(() => import('./pages/Faculties').then((module) => ({ default: module.Faculties })));
+const Programs = lazy(() => import('./pages/Programs').then((module) => ({ default: module.Programs })));
+const Units = lazy(() => import('./pages/Units').then((module) => ({ default: module.Units })));
+const Timetable = lazy(() => import('./pages/Timetable').then((module) => ({ default: module.Timetable })));
+const LibraryPage = lazy(() => import('./pages/Library').then((module) => ({ default: module.Library })));
+const Attendance = lazy(() => import('./pages/Attendance').then((module) => ({ default: module.Attendance })));
 const NotFound = lazy(() => import('./pages/NotFound').then((module) => ({ default: module.NotFound })));
 
 function Splash() {
@@ -74,6 +80,12 @@ export function App() {
         <Route path="resultats" element={page(<RoleGate roles={['admin', 'teacher', 'parent']}><Results /></RoleGate>)} />
         <Route path="cours" element={page(<RoleGate roles={['admin', 'teacher']}><Courses /></RoleGate>)} />
         <Route path="annonces" element={page(<RoleGate roles={['admin', 'teacher', 'parent']}><Announcements /></RoleGate>)} />
+        <Route path="facultes" element={page(<RoleGate roles={['admin', 'teacher']}><Faculties /></RoleGate>)} />
+        <Route path="filieres" element={page(<RoleGate roles={['admin', 'teacher']}><Programs /></RoleGate>)} />
+        <Route path="unites" element={page(<RoleGate roles={['admin', 'teacher']}><Units /></RoleGate>)} />
+        <Route path="emploi-du-temps" element={page(<RoleGate roles={['admin', 'teacher']}><Timetable /></RoleGate>)} />
+        <Route path="bibliotheque" element={page(<RoleGate roles={['admin']}><LibraryPage /></RoleGate>)} />
+        <Route path="presences" element={page(<RoleGate roles={['admin', 'teacher']}><Attendance /></RoleGate>)} />
         <Route path="parametres" element={page(<Settings />)} />
       </Route>
 

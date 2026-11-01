@@ -19,6 +19,10 @@ import courseRoutes from './routes/courses.js';
 import announcementRoutes from './routes/announcements.js';
 import gradeRoutes from './routes/grades.js';
 import metaRoutes from './routes/meta.js';
+import { facultiesRouter, programsRouter, unitsRouter } from './routes/university.js';
+import scheduleRoutes from './routes/schedules.js';
+import libraryRoutes from './routes/library.js';
+import attendanceRoutes from './routes/attendance.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(__dirname, '..', 'web', 'dist');
@@ -59,6 +63,12 @@ app.use('/api/courses', requireAuth, courseRoutes);
 app.use('/api/announcements', requireAuth, announcementRoutes);
 app.use('/api/grades', requireAuth, gradeRoutes);
 app.use('/api/meta', requireAuth, metaRoutes);
+app.use('/api/faculties', requireAuth, facultiesRouter);
+app.use('/api/programs', requireAuth, programsRouter);
+app.use('/api/course-units', requireAuth, unitsRouter);
+app.use('/api/schedules', requireAuth, scheduleRoutes);
+app.use('/api/library', requireAuth, libraryRoutes);
+app.use('/api/attendance', requireAuth, attendanceRoutes);
 
 app.get('/api/activity', requireAuth, (req, res) => {
   res.json({ items: recentActivity(12) });

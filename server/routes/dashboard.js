@@ -127,6 +127,44 @@ router.get('/', asyncHandler(async (req, res) => {
       GROUP BY c.id ORDER BY studentCount DESC LIMIT 5`,
   );
 
+  /* ----- Volet universitaire ----- */
+  const facultyCount = get('SELECT COUNT(*) AS c FROM faculties').c;
+  const programCount = get('SELECT COUNT(*) AS c FROM programs').c;
+  const unitStats = get('SELECT COUNT(*) AS total, COALESCE(SUM(credits), 0) AS credits FROM course_units');
+  const universityStudents = get(
+    "SELECT COUNT(*) AS c FROM students WHERE student_type = 'etudiant' AND status = 'actif'",
+  ).c;
+  const library = {
+    books: get('SELECT COUNT(*) AS c FROM books').c,
+    copies: get('SELECT COALESCE(SUM(copies_total), 0) AS c FROM books').c,
+    available: get('SELECT COALESCE(SUM(copies_available), 0) AS c FROM books').c,
+    activeLoans: get("SELECT COUNT(*) AS c FROM loans WHERE status <> 'rendu'").c,
+    lateLoans: get("SELECT COUNT(*) AS c FROM loans WHERE status = 'retard'").c,
+  };
+
+  const DAY_NAMES = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+  const todayName = DAY_NAMES[new Date().getDay()];
+  const todaySchedule = all(
+    `SELECT s.id, s.title, s.room, s.day, s.start_time AS startTime, s.end_time AS endTime, s.kind,
+            c.name AS className, p.name AS programName,
+            t.first_name || ' ' || t.last_name AS teacherName
+       FROM schedules s
+       LEFT JOIN classes c ON c.id = s.class_id
+       LEFT JOIN programs p ON p.id = s.program_id
+       LEFT JOIN teachers t ON t.id = s.teacher_id
+      WHERE s.day = ? ORDER BY s.start_time LIMIT 6`,
+    todayName,
+  );
+
+  const attendanceToday = get(
+    `SELECT COUNT(*) AS total,
+            SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) AS present,
+            SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) AS absent,
+            SUM(CASE WHEN status = 'retard' THEN 1 ELSE 0 END) AS late
+       FROM attendance WHERE date = ?`,
+    new Date().toISOString().slice(0, 10),
+  );
+
   const audience = user.role === 'parent' ? 'parents' : user.role === 'teacher' ? 'enseignants' : null;
   const announcements = user.role === 'admin'
     ? all(
@@ -165,6 +203,29 @@ router.get('/', asyncHandler(async (req, res) => {
       admissionsPending: (admissions.en_attente ?? 0) + (admissions.en_revue ?? 0),
       average,
       transactions: payments.transactions,
+      universityStudents,
+      programs: programCount,
+      courseUnits: unitStats.total,
+      credits: unitStats.credits,
+    },
+    university: {
+      faculties: facultyCount,
+      programs: programCount,
+      students: universityStudents,
+      courseUnits: unitStats.total,
+      credits: unitStats.credits,
+      library,
+    },
+    today: {
+      day: todayName,
+      schedule: todaySchedule,
+      attendance: {
+        date: new Date().toISOString().slice(0, 10),
+        total: attendanceToday.total ?? 0,
+        present: attendanceToday.present ?? 0,
+        absent: attendanceToday.absent ?? 0,
+        late: attendanceToday.late ?? 0,
+      },
     },
     revenueSeries,
     studentsByLevel,

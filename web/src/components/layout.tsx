@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, GraduationCap, School, ClipboardList, Wallet, BookOpen,
   Megaphone, Award, Settings, Menu, X, LogOut, ChevronDown, LifeBuoy, Bell, UserRound,
+  Building2, Layers, CalendarDays, Library, UserCheck,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAuth } from '../lib/auth';
@@ -31,6 +32,17 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
       { to: '/app/mes-enfants', label: 'Mes enfants', icon: Users, roles: ['parent'] },
       { to: '/app/classes', label: 'Classes', icon: School, roles: ['admin', 'teacher'] },
       { to: '/app/enseignants', label: 'Enseignants', icon: GraduationCap, roles: ['admin'] },
+      { to: '/app/presences', label: 'Présences', icon: UserCheck, roles: ['admin', 'teacher'] },
+    ],
+  },
+  {
+    title: 'Université',
+    items: [
+      { to: '/app/facultes', label: 'Facultés', icon: Building2, roles: ['admin', 'teacher'] },
+      { to: '/app/filieres', label: 'Filières', icon: Layers, roles: ['admin', 'teacher'] },
+      { to: '/app/unites', label: "Unités d'enseignement", icon: BookOpen, roles: ['admin', 'teacher'] },
+      { to: '/app/emploi-du-temps', label: 'Emploi du temps', icon: CalendarDays, roles: ['admin', 'teacher'] },
+      { to: '/app/bibliotheque', label: 'Bibliothèque', icon: Library, roles: ['admin'] },
     ],
   },
   {

@@ -47,6 +47,12 @@ const pages = {
   Announcements: '/src/pages/Announcements.tsx',
   Results: '/src/pages/Results.tsx',
   Settings: '/src/pages/Settings.tsx',
+  Faculties: '/src/pages/Faculties.tsx',
+  Programs: '/src/pages/Programs.tsx',
+  Units: '/src/pages/Units.tsx',
+  Timetable: '/src/pages/Timetable.tsx',
+  Library: '/src/pages/Library.tsx',
+  Attendance: '/src/pages/Attendance.tsx',
   NotFound: '/src/pages/NotFound.tsx',
 };
 
@@ -61,13 +67,22 @@ const courses = await realFetch('/api/courses');
 const announcements = await realFetch('/api/announcements');
 const results = await realFetch('/api/grades/results?term=' + encodeURIComponent(meta.currentTerm));
 const studentDetail = await realFetch('/api/students/' + students.items[0].id);
+const faculties = await realFetch('/api/faculties');
+const programs = await realFetch('/api/programs');
+const units = await realFetch('/api/course-units');
+const schedules = await realFetch('/api/schedules');
+const books = await realFetch('/api/library/books');
+const loans = await realFetch('/api/library/loans');
+const attendance = await realFetch('/api/attendance?date=' + new Date().toISOString().slice(0, 10));
+const attendanceToday = attendance;
+const noFilters = { search: '', classFilter: '', statusFilter: '', typeFilter: '' };
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
 const seed = [
   [['meta'], meta],
   [['dashboard'], dashboard],
   [['students', 'children'], students],
-  [['students', { search: '', classFilter: '', statusFilter: '' }], students],
+  [['students', noFilters], students],
   [['students', 'admin'], students],
   [['classes'], classes],
   [['class', classes.items[0].id], { class: classes.items[0], students: students.items.slice(0, 5) }],
@@ -78,6 +93,15 @@ const seed = [
   [['announcements', { search: '' }], announcements],
   [['results', { term: meta.currentTerm, classFilter: '' }], results],
   [['student', students.items[0].id], studentDetail],
+  [['faculties'], faculties],
+  [['faculty', faculties.items[0]?.id], { faculty: faculties.items[0], programs: programs.items }],
+  [['programs', '', '', ''], programs],
+  [['program', programs.items[0]?.id], { program: programs.items[0], units: units.items, students: students.items.slice(0, 5) }],
+  [['units', '', '', ''], units],
+  [['schedules', '', ''], schedules],
+  [['books', '', '', ''], books],
+  [['loans', '', ''], loans],
+  [['attendance', new Date().toISOString().slice(0, 10), '', '', 'Journée'], attendanceToday],
   [['me'], { user: me.user }],
 ];
 for (const [key, data] of seed) queryClient.setQueryData(key, data);
@@ -94,6 +118,12 @@ const routes = {
   Announcements: '/app/annonces',
   Results: '/app/resultats',
   Settings: '/app/parametres',
+  Faculties: '/app/facultes',
+  Programs: '/app/filieres',
+  Units: '/app/unites',
+  Timetable: '/app/emploi-du-temps',
+  Library: '/app/bibliotheque',
+  Attendance: '/app/presences',
   Login: '/connexion',
   Landing: '/',
   NotFound: '/nope',

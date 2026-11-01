@@ -112,6 +112,33 @@ export function seed() {
   const insertAnnouncement = db.prepare(`INSERT INTO announcements
     (id, title, body, audience, status, author_id, published_at, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const insertFaculty = db.prepare(`INSERT INTO faculties
+    (id, name, code, dean, building, phone, email, description, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const insertProgram = db.prepare(`INSERT INTO programs
+    (id, faculty_id, name, code, degree, duration_years, total_credits, tuition_fee, status, description,
+     created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const insertUnit = db.prepare(`INSERT INTO course_units
+    (id, program_id, code, title, semester, credits, hours, teacher_id, description, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const insertSchedule = db.prepare(`INSERT INTO schedules
+    (id, title, class_id, program_id, teacher_id, room, day, start_time, end_time, kind, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const insertBook = db.prepare(`INSERT INTO books
+    (id, title, author, isbn, category, copies_total, copies_available, shelf, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const insertLoan = db.prepare(`INSERT INTO loans
+    (id, book_id, student_id, loaned_at, due_at, returned_at, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const insertAttendance = db.prepare(`INSERT INTO attendance
+    (id, student_id, class_id, program_id, date, session, status, note, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const insertUniversityStudent = db.prepare(`INSERT INTO students
+    (id, matricule, first_name, last_name, gender, birth_date, class_id, guardian_name, guardian_phone,
+     guardian_email, guardian_user_id, address, status, student_type, program_id, academic_level,
+     enrolled_at, notes, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, ?, ?, 'etudiant', ?, ?, ?, NULL, ?, ?)`);
   const insertGrade = db.prepare(`INSERT INTO grades
     (id, student_id, subject, term, score, max_score, coefficient, evaluated_at, teacher_id, comment,
      created_at, updated_at)
@@ -374,11 +401,207 @@ export function seed() {
     });
   });
 
+
+  /* --- Université : facultés & filières --- */
+  const faculties = [
+    ['Faculté des Sciences et Techniques', 'FST', 'Dr Prosper Mbemba', 'Bâtiment A',
+      'Sciences et ingénierie : informatique, mathématiques, physique appliquée.'],
+    ['Faculté des Lettres et Sciences Humaines', 'FLSH', 'Pr Christelle Loubaki', 'Bâtiment B',
+      'Lettres modernes, langues, communication et sciences sociales.'],
+    ['Faculté de Droit et Sciences Politiques', 'FDSP', 'Pr Juvénal Tsiba', 'Bâtiment C',
+      'Droit privé, droit public et sciences politiques.'],
+    ['Faculté des Sciences Économiques et de Gestion', 'FSEG', 'Dr Mireille Otsali', 'Bâtiment D',
+      'Comptabilité, finance, management et économie appliquée.'],
+  ].map(([name, code, dean, building, description]) => {
+    const fid = id('fac');
+    insertFaculty.run(fid, name, code, dean, building,
+      `+242 06 ${int(100, 999)} ${int(10, 99)} ${int(10, 99)}`,
+      `secretariat.${code.toLowerCase()}@schoolnet.academy`, description, stamp, stamp);
+    return { id: fid, name, code, dean };
+  });
+
+  const programSpecs = [
+    ['Informatique', 'INF', 0, 'Licence', 3, 180, 780000],
+    ['Mathématiques appliquées', 'MAT', 0, 'Licence', 3, 180, 650000],
+    ['Lettres modernes', 'LET', 1, 'Licence', 3, 180, 520000],
+    ['Communication et médias', 'COM', 1, 'Master', 2, 120, 890000],
+    ['Droit privé', 'DRP', 2, 'Licence', 3, 180, 700000],
+    ['Sciences politiques', 'SPO', 2, 'Master', 2, 120, 950000],
+    ['Comptabilité et finance', 'CFI', 3, 'Licence', 3, 180, 720000],
+    ['Management des organisations', 'MGT', 3, 'Master', 2, 120, 980000],
+  ];
+  const programs = programSpecs.map(([name, code, facultyIndex, degree, years, credits, fee]) => {
+    const pid = id('prg');
+    insertProgram.run(pid, faculties[facultyIndex].id, name, code, degree, years, credits, fee, 'ouverte',
+      `Parcours ${degree} en ${name.toLowerCase()} — ${years} ans, ${credits} crédits.`, stamp, stamp);
+    return { id: pid, name, code, degree, years, credits, fee, facultyId: faculties[facultyIndex].id };
+  });
+
+  /* --- Étudiants (université) --- */
+  const uniStudents = [];
+  const LEVELS_BY_DEGREE = { Licence: ['L1', 'L2', 'L3'], Master: ['M1', 'M2'], Doctorat: ['D1'], BTS: ['BTS1'], Certificat: ['C1'] };
+  programs.forEach((program) => {
+    for (let i = 0; i < 6; i++) {
+      const gender = chance(0.5) ? 'F' : 'M';
+      let first = firstNameFor(gender);
+      const last = pick(LAST);
+      let guard = 0;
+      while (usedNames.has(`${first} ${last}`) && guard++ < 20) first = firstNameFor(gender);
+      usedNames.add(`${first} ${last}`);
+      const sid = id('stu');
+      const levels = LEVELS_BY_DEGREE[program.degree] || ['L1'];
+      const level = levels[int(0, levels.length - 1)];
+      const age = program.degree === 'Master' ? int(22, 27) : int(18, 23);
+      insertUniversityStudent.run(
+        sid, `UNI-${TODAY.getUTCFullYear()}-${num(uniStudents.length + 1)}`,
+        first, last, gender, `${TODAY.getUTCFullYear() - age}-${pad2(int(1, 12))}-${pad2(int(1, 27))}`,
+        `${pick(FIRST_F)} ${last}`,
+        `+242 0${int(5, 6)} ${int(100, 999)} ${int(10, 99)} ${int(10, 99)}`,
+        `${slug(first)}.${slug(last)}@etu.schoolnet.academy`,
+        `${int(1, 180)} avenue ${pick(['de l\'Université', 'Marien Ngouabi', 'de la Science', 'des Étudiants'])}, ${pick(['Bacongo', 'Moungali', 'Talangaï', 'Makélékélé'])}`,
+        chance(0.95) ? 'actif' : pick(['suspendu', 'diplome']),
+        program.id, level, dateOnly(-int(30, 1200)), stamp, stamp,
+      );
+      uniStudents.push({ id: sid, first, last, programId: program.id, level });
+    }
+  });
+
+  /* --- Unités d'enseignement (maquette LMD complète) --- */
+  const unitTitles = {
+    INF: ['Algorithmique et programmation', 'Bases de données', 'Développement web', 'Réseaux et systèmes', 'Mathématiques pour l’informatique'],
+    MAT: ['Analyse mathématique', 'Algèbre linéaire', 'Probabilités et statistiques', 'Analyse numérique', 'Modélisation appliquée'],
+    LET: ['Littérature africaine', 'Linguistique générale', 'Méthodologie du commentaire', 'Littérature comparée', 'Expression écrite et orale'],
+    COM: ['Théories de la communication', 'Production audiovisuelle', 'Communication institutionnelle', 'Journalisme et médias', 'Communication numérique'],
+    DRP: ['Droit civil', 'Droit des obligations', 'Procédure pénale', 'Droit du travail', 'Droit OHADA des affaires'],
+    SPO: ['Science politique comparée', 'Relations internationales', 'Politiques publiques', 'Sociologie politique', 'Histoire des idées politiques'],
+    CFI: ['Comptabilité générale', 'Analyse financière', 'Fiscalité congolaise', 'Comptabilité OHADA', 'Contrôle de gestion'],
+    MGT: ['Management stratégique', 'Gestion des ressources humaines', 'Marketing et marchés', 'Gestion de projet', 'Éthique des affaires'],
+  };
+  const units = [];
+  programs.forEach((program) => {
+    const titles = unitTitles[program.code] ?? ['Introduction au programme', 'Méthodologie', 'Séminaire de recherche', 'Langue et communication', 'Projet tutoré'];
+    const semesters = program.degree === 'Master' ? 4 : program.years * 2;
+    const programTeachers = teachers.filter((t) => t.status === 'actif');
+    for (let sem = 1; sem <= semesters; sem++) {
+      for (let i = 0; i < 5; i++) {
+        const base = titles[i % titles.length];
+        const title = sem > semesters / 2 ? `${base} II` : base;
+        const teacher = programTeachers[(sem * 5 + i + program.code.charCodeAt(0)) % programTeachers.length];
+        const uidv = id('unt');
+        insertUnit.run(
+          uidv, program.id, `${program.code}-${sem}0${i + 1}`, title, sem, 6, 45,
+          teacher.id, `Unité d'enseignement « ${title} » — ${program.name}, semestre ${sem}.`, 'actif', stamp, stamp,
+        );
+        units.push({ id: uidv, programId: program.id, title, semester: sem });
+      }
+    }
+  });
+
+  /* --- Emploi du temps --- */
+  const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
+  const SLOTS = [['07:30', '09:30'], ['09:45', '11:45'], ['13:00', '15:00'], ['15:15', '17:15']];
+  classes.forEach((cls, ci) => {
+    for (let i = 0; i < 2; i++) {
+      const slot = SLOTS[(ci + i) % SLOTS.length];
+      insertSchedule.run(
+        id('sch'), `Cours de ${pick(SUBJECTS.slice(0, 6))}`, cls.id, null,
+        pick(teachers.filter((t) => t.status === 'actif')).id, pick(ROOMS), DAYS[(ci + i) % 5],
+        slot[0], slot[1], pick(['Cours', 'TD']), stamp, stamp,
+      );
+    }
+  });
+  programs.forEach((program, pi) => {
+    const programUnits = units.filter((u) => u.programId === program.id && u.semester === 1).slice(0, 3);
+    programUnits.forEach((unit, ui) => {
+      const slot = SLOTS[(pi + ui) % SLOTS.length];
+      insertSchedule.run(
+        id('sch'), unit.title, null, program.id,
+        pick(teachers.filter((t) => t.status === 'actif')).id, `Amphi ${String.fromCharCode(65 + (pi % 4))}`,
+        DAYS[(pi + ui) % 5], slot[0], slot[1], pick(['Cours', 'TD', 'TP']), stamp, stamp,
+      );
+    });
+  });
+
+  /* --- Bibliothèque --- */
+  const bookSpecs = [
+    ['Une saison blanche et sèche', 'André Brink', 'Roman', 'Littérature', 4],
+    ["L'Enfant noir", 'Camara Laye', 'Roman', 'Littérature', 5],
+    ['Le Pleurer-Rire', 'Henri Lopes', 'Roman', 'Littérature', 3],
+    ['Les Bouts de bois de Dieu', 'Sembène Ousmane', 'Roman', 'Littérature', 3],
+    ['Mathématiques pour l’ingénieur', 'Prosper Mbemba', 'Manuel', 'Sciences', 6],
+    ['Analyse numérique et algorithmes', 'Collectif FST', 'Manuel', 'Sciences', 4],
+    ['Introduction aux bases de données', 'C. J. Date', 'Manuel', 'Informatique', 4],
+    ['Apprendre Python en 30 jours', 'A. Bouanga', 'Manuel', 'Informatique', 7],
+    ['Droit civil congolais', 'J. Tsiba', 'Manuel', 'Droit', 3],
+    ['Droit constitutionnel comparé', 'M. Ndinga', 'Manuel', 'Droit', 2],
+    ['Économie générale', 'Mireille Otsali', 'Manuel', 'Économie', 5],
+    ['Comptabilité OHADA', 'Collectif FSEG', 'Manuel', 'Économie', 6],
+    ['Histoire de l’Afrique centrale', 'Gaëlle Mouanda', 'Essai', 'Histoire', 4],
+    ['Philosophie africaine', 'Irène Bakala', 'Essai', 'Philosophie', 3],
+    ['Atlas du Congo', 'Institut géographique', 'Atlas', 'Géographie', 2],
+    ['Physique expérimentale', 'Mireille Otsali', 'Manuel', 'Sciences', 3],
+    ['Communication et société', 'Christelle Loubaki', 'Essai', 'Communication', 3],
+    ['Management des organisations', 'Collectif FSEG', 'Manuel', 'Gestion', 4],
+  ];
+  const books = bookSpecs.map(([title, author, isbn, category, copies]) => {
+    const bid = id('bok');
+    insertBook.run(bid, title, author, `978-2-${int(100000, 999999)}-${int(10, 99)}-${int(1, 9)}`,
+      category, copies, copies, `Rayon ${pick(['A1', 'A2', 'B1', 'B2', 'C1', 'C2'])}`, stamp, stamp);
+    return { id: bid, title, copies };
+  });
+
+  const borrowers = [...students.slice(0, 12), ...uniStudents.slice(0, 8)];
+  borrowers.forEach((student, index) => {
+    const book = books[index % books.length];
+    const loaned = -int(3, 40);
+    const due = loaned + 14;
+    const returned = due < -2 && chance(0.7);
+    const status = returned ? 'rendu' : due < -1 ? 'retard' : 'en_cours';
+    insertLoan.run(
+      id('lon'), book.id, student.id, iso(loaned, int(8, 16)), dateOnly(due),
+      returned ? iso(due + int(0, 2), 12) : null, status, stamp, stamp,
+    );
+  });
+  // disponibilité = exemplaires - emprunts en cours
+  db.exec(`UPDATE books SET copies_available = copies_total - (
+    SELECT COUNT(*) FROM loans l WHERE l.book_id = books.id AND l.status <> 'rendu')`);
+
+  /* --- Présences --- */
+  const SESSIONS = ['08:00', '10:00', '14:00'];
+  for (let d = 0; d < 10; d++) {
+    const dayOffset = -d;
+    const date = new Date(TODAY.getTime() + dayOffset * 86400000);
+    if ([0, 6].includes(date.getUTCDay())) continue;
+    students.slice(0, 40).forEach((student) => {
+      if (!chance(0.22)) return;
+      const roll = rand();
+      const status = roll < 0.72 ? 'present' : roll < 0.85 ? 'absent' : roll < 0.94 ? 'retard' : 'excuse';
+      insertAttendance.run(
+        id('att'), student.id, student.classId, null, dateOnly(dayOffset),
+        pick(SESSIONS), status, status === 'excuse' ? 'Justificatif remis au secrétariat.' : null, stamp, stamp,
+      );
+    });
+    uniStudents.slice(0, 16).forEach((student) => {
+      if (!chance(0.2)) return;
+      const roll = rand();
+      const status = roll < 0.78 ? 'present' : roll < 0.9 ? 'absent' : 'retard';
+      insertAttendance.run(
+        id('att'), student.id, null, student.programId, dateOnly(dayOffset),
+        pick(SESSIONS), status, null, stamp, stamp,
+      );
+    });
+  }
+
   return {
     users: users.length + 0,
     teachers: teachers.length,
     classes: classes.length,
-    students: students.length,
+    students: students.length + uniStudents.length,
+    universityStudents: uniStudents.length,
+    faculties: faculties.length,
+    programs: programs.length,
+    courseUnits: units.length,
+    books: books.length,
     payments: payIndex,
   };
 }
@@ -386,7 +609,8 @@ export function seed() {
 /* ------------------------------------------------------------------ */
 
 export function resetDatabase() {
-  const tables = ['grades', 'payments', 'admissions', 'courses', 'announcements', 'students',
+  const tables = ['attendance', 'loans', 'books', 'schedules', 'course_units', 'programs', 'faculties',
+    'grades', 'payments', 'admissions', 'courses', 'announcements', 'students',
     'classes', 'teachers', 'sessions', 'users'];
   db.exec('PRAGMA foreign_keys = OFF;');
   for (const t of tables) db.exec(`DELETE FROM ${t};`);

@@ -22,12 +22,13 @@ const PAGE_SIZE = 12;
 type FormState = {
   firstName: string; lastName: string; gender: 'F' | 'M'; birthDate: string; classId: string;
   guardianName: string; guardianPhone: string; guardianEmail: string; address: string;
-  status: string; notes: string;
+  status: string; notes: string; studentType: 'eleve' | 'etudiant'; programId: string; academicLevel: string;
 };
 
 const emptyForm: FormState = {
   firstName: '', lastName: '', gender: 'F', birthDate: '', classId: '',
   guardianName: '', guardianPhone: '', guardianEmail: '', address: '', status: 'actif', notes: '',
+  studentType: 'eleve', programId: '', academicLevel: '',
 };
 
 export function Students() {
@@ -41,6 +42,7 @@ export function Students() {
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
   const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Student | null>(null);
@@ -51,11 +53,11 @@ export function Students() {
 
   const meta = useQuery({ queryKey: ['meta'], queryFn: () => get<Meta>('/meta') });
 
-  const queryKey = ['students', { search, classFilter, statusFilter }] as const;
+  const queryKey = ['students', { search, classFilter, statusFilter, typeFilter }] as const;
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey,
     queryFn: () => get<ListResponse<Student> & { stats: Record<string, number>; term: string }>(
-      `/students${qs({ search, classId: classFilter, status: statusFilter })}`,
+      `/students${qs({ search, classId: classFilter, status: statusFilter, type: typeFilter })}`,
     ),
   });
 
@@ -64,7 +66,7 @@ export function Students() {
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  useEffect(() => { setPage(1); }, [search, classFilter, statusFilter]);
+  useEffect(() => { setPage(1); }, [search, classFilter, statusFilter, typeFilter]);
 
   useEffect(() => {
     if (searchParams.get('new') === '1' && isAdmin) {
@@ -97,6 +99,9 @@ export function Students() {
       address: student.address ?? '',
       status: student.status,
       notes: student.notes ?? '',
+      studentType: student.studentType === 'etudiant' ? 'etudiant' : 'eleve',
+      programId: student.programId ?? '',
+      academicLevel: student.academicLevel ?? '',
     });
     setFormError(null);
     setFormOpen(true);
@@ -140,7 +145,7 @@ export function Students() {
   });
 
   const stats = data?.stats ?? {};
-  const hasFilters = Boolean(search || classFilter || statusFilter);
+  const hasFilters = Boolean(search || classFilter || statusFilter || typeFilter);
   const scored = items.filter((student) => student.average !== null && student.average !== undefined);
   const classAverage = scored.length
     ? scored.reduce((sum, student) => sum + (student.average ?? 0), 0) / scored.length
@@ -155,7 +160,9 @@ export function Students() {
     saveMutation.mutate({
       ...form,
       birthDate: form.birthDate || '',
-      classId: form.classId || '',
+      classId: form.studentType === 'etudiant' ? '' : form.classId || '',
+      programId: form.studentType === 'etudiant' ? form.programId || '' : '',
+      academicLevel: form.studentType === 'etudiant' ? form.academicLevel || '' : '',
     });
   }
 
@@ -183,6 +190,11 @@ export function Students() {
         <div className="table-toolbar">
           <SearchInput value={search} onChange={setSearch} placeholder="Nom, matricule ou tuteur…" />
           <div className="filter-bar" style={{ marginLeft: 'auto' }}>
+            <Select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} aria-label="Filtrer par profil">
+              <option value="">Élèves & étudiants</option>
+              <option value="eleve">Élèves (école)</option>
+              <option value="etudiant">Étudiants (université)</option>
+            </Select>
             <Select value={classFilter} onChange={(event) => setClassFilter(event.target.value)} aria-label="Filtrer par classe">
               <option value="">Toutes les classes</option>
               {(meta.data?.classes ?? []).map((cls) => (
@@ -215,7 +227,7 @@ export function Students() {
             title={hasFilters ? 'Aucun élève ne correspond' : isParent ? 'Aucun enfant rattaché' : 'Aucun élève inscrit'}
             description={hasFilters ? 'Essayez un autre nom, une autre classe ou réinitialisez les filtres.' : isParent ? 'Contactez le secrétariat pour associer votre compte à une fiche élève.' : 'Commencez par inscrire un premier élève pour alimenter la scolarité.'}
             action={hasFilters ? (
-              <Button onClick={() => { setSearch(''); setClassFilter(''); setStatusFilter(''); }}>Réinitialiser les filtres</Button>
+              <Button onClick={() => { setSearch(''); setClassFilter(''); setStatusFilter(''); setTypeFilter(''); }}>Réinitialiser les filtres</Button>
             ) : isAdmin ? (
               <Button variant="primary" icon={Plus} onClick={openCreate}>Inscrire un élève</Button>
             ) : undefined}
@@ -254,8 +266,17 @@ export function Students() {
                           </div>
                         </td>
                         <td>
-                          <div className="cell-main" style={{ fontWeight: 500 }}>{student.className ?? 'Non affecté'}</div>
-                          <div className="cell-sub">{student.level ?? '—'}</div>
+                          {student.studentType === 'etudiant' ? (
+                            <>
+                              <div className="cell-main" style={{ fontWeight: 500 }}>{student.programName ?? 'Filière non définie'}</div>
+                              <div className="cell-sub">{student.academicLevel ?? 'Niveau ?'} · Université</div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="cell-main" style={{ fontWeight: 500 }}>{student.className ?? 'Non affecté'}</div>
+                              <div className="cell-sub">{student.level ?? '—'}</div>
+                            </>
+                          )}
                         </td>
                         <td className="hide-sm">
                           <div style={{ fontSize: 13 }}>{student.guardianName ?? '—'}</div>
@@ -325,14 +346,45 @@ export function Students() {
           <Field label="Date de naissance" htmlFor="birthDate">
             <Input id="birthDate" type="date" value={form.birthDate} onChange={(event) => setForm({ ...form, birthDate: event.target.value })} />
           </Field>
-          <Field label="Classe" htmlFor="classId" hint="La classe détermine les frais annuels.">
-            <Select id="classId" value={form.classId} onChange={(event) => setForm({ ...form, classId: event.target.value })}>
-              <option value="">Non affecté</option>
-              {(meta.data?.classes ?? []).map((cls) => (
-                <option key={cls.id} value={cls.id}>{cls.name} · {cls.studentCount}/{cls.capacity}</option>
-              ))}
+          <Field label="Profil" htmlFor="studentType" hint="École (classe) ou université (filière).">
+            <Select
+              id="studentType"
+              value={form.studentType}
+              onChange={(event) => setForm({ ...form, studentType: event.target.value as 'eleve' | 'etudiant' })}
+            >
+              <option value="eleve">Élève — école</option>
+              <option value="etudiant">Étudiant — université</option>
             </Select>
           </Field>
+          {form.studentType === 'eleve' ? (
+            <Field label="Classe" htmlFor="classId" hint="La classe détermine les frais annuels.">
+              <Select id="classId" value={form.classId} onChange={(event) => setForm({ ...form, classId: event.target.value })}>
+                <option value="">Non affecté</option>
+                {(meta.data?.classes ?? []).map((cls) => (
+                  <option key={cls.id} value={cls.id}>{cls.name} · {cls.studentCount}/{cls.capacity}</option>
+                ))}
+              </Select>
+            </Field>
+          ) : (
+            <>
+              <Field label="Filière" htmlFor="programId" hint="Les frais suivent la filière.">
+                <Select id="programId" value={form.programId} onChange={(event) => setForm({ ...form, programId: event.target.value })}>
+                  <option value="">Non affecté</option>
+                  {(meta.data?.programs ?? []).map((program) => (
+                    <option key={program.id} value={program.id}>{program.code} — {program.name}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Niveau" htmlFor="academicLevel">
+                <Select id="academicLevel" value={form.academicLevel} onChange={(event) => setForm({ ...form, academicLevel: event.target.value })}>
+                  <option value="">Non défini</option>
+                  {(meta.data?.academicLevels ?? ['L1', 'L2', 'L3', 'M1', 'M2']).map((level) => (
+                    <option key={level} value={level}>{level}</option>
+                  ))}
+                </Select>
+              </Field>
+            </>
+          )}
           <Field label="Statut" htmlFor="status">
             <Select id="status" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>
               {Object.entries(STUDENT_STATUS).map(([key, value]) => (
@@ -475,7 +527,11 @@ function StudentDrawer({
                   <div className="label" style={{ marginBottom: 12 }}>Informations</div>
                   <div className="stack gap-12">
                     <InfoRow icon={CalendarDays} label="Naissance" value={student.birthDate ? `${formatDate(student.birthDate)} (${ageFrom(student.birthDate)} ans)` : '—'} />
-                    <InfoRow icon={GraduationCap} label="Classe" value={`${student.className ?? 'Non affecté'}${student.mainTeacher ? ` · ${student.mainTeacher}` : ''}`} />
+                    {student.programName ? (
+                      <InfoRow icon={GraduationCap} label="Filière" value={`${student.programName}${student.academicLevel ? ` · ${student.academicLevel}` : ''}${student.facultyName ? ` · ${student.facultyName}` : ''}`} />
+                    ) : (
+                      <InfoRow icon={GraduationCap} label="Classe" value={`${student.className ?? 'Non affecté'}${student.mainTeacher ? ` · ${student.mainTeacher}` : ''}`} />
+                    )}
                     <InfoRow icon={Users} label="Tuteur" value={student.guardianName ?? '—'} />
                     <InfoRow icon={Phone} label="Téléphone" value={student.guardianPhone ?? '—'} />
                     <InfoRow icon={Mail} label="E-mail" value={student.guardianEmail ?? '—'} />

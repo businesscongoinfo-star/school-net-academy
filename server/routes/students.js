@@ -16,6 +16,9 @@ const studentSchema = z.object({
   guardianEmail: z.string().max(160).nullable().optional(),
   address: z.string().max(240).nullable().optional(),
   status: z.enum(['actif', 'suspendu', 'diplome', 'parti']).default('actif'),
+  studentType: z.enum(['eleve', 'etudiant']).default('eleve'),
+  programId: z.string().nullable().optional(),
+  academicLevel: z.string().max(10).nullable().optional(),
   notes: z.string().max(600).nullable().optional(),
   matricule: z.string().max(40).optional(),
 });
@@ -23,7 +26,8 @@ const studentSchema = z.object({
 const toRow = (s, enrolledAt, ts) => [
   s.firstName, s.lastName, s.gender, s.birthDate ?? null, s.classId || null,
   s.guardianName ?? null, s.guardianPhone ?? null, s.guardianEmail ?? null,
-  s.address ?? null, s.status, enrolledAt, s.notes ?? null, ts, ts,
+  s.address ?? null, s.status, s.studentType ?? 'eleve', s.programId || null,
+  s.academicLevel || null, enrolledAt, s.notes ?? null, ts, ts,
 ];
 
 export function nextMatricule() {
@@ -39,7 +43,7 @@ export function nextMatricule() {
 }
 
 router.get('/', asyncHandler(async (req, res) => {
-  const { search = '', classId = '', status = '', level = '' } = req.query;
+  const { search = '', classId = '', status = '', level = '', type = '', programId = '' } = req.query;
   const scope = parentScope(req.user);
   const filters = [scope.sql];
   const params = [...scope.params];
@@ -52,6 +56,8 @@ router.get('/', asyncHandler(async (req, res) => {
   if (classId) { filters.push('s.class_id = ?'); params.push(classId); }
   if (status) { filters.push('s.status = ?'); params.push(status); }
   if (level) { filters.push('c.level = ?'); params.push(level); }
+  if (type) { filters.push('s.student_type = ?'); params.push(type); }
+  if (programId) { filters.push('s.program_id = ?'); params.push(programId); }
 
   const term = typeof req.query.term === 'string' && req.query.term ? req.query.term : termNow();
   const items = all(
@@ -59,11 +65,14 @@ router.get('/', asyncHandler(async (req, res) => {
             s.birth_date AS birthDate, s.class_id AS classId, s.guardian_name AS guardianName,
             s.guardian_phone AS guardianPhone, s.guardian_email AS guardianEmail, s.address,
             s.status, s.enrolled_at AS enrolledAt, s.notes, s.created_at AS createdAt,
+            s.student_type AS studentType, s.program_id AS programId, s.academic_level AS academicLevel,
             c.name AS className, c.level, c.tuition_fee AS tuitionFee,
+            p.name AS programName, p.tuition_fee AS programFee,
             COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.student_id = s.id AND p.status = 'paye'), 0) AS paidTotal,
             COALESCE((SELECT ROUND(SUM(g.score * g.coefficient) * 1.0 / NULLIF(SUM(g.coefficient), 0), 2)
                         FROM grades g WHERE g.student_id = s.id AND g.term = ?), NULL) AS average
        FROM students s LEFT JOIN classes c ON c.id = s.class_id
+       LEFT JOIN programs p ON p.id = s.program_id
       WHERE ${filters.join(' AND ')}
       ORDER BY s.last_name COLLATE NOCASE, s.first_name COLLATE NOCASE`,
     term, ...params,
@@ -72,8 +81,10 @@ router.get('/', asyncHandler(async (req, res) => {
   const stats = {
     total: items.length,
     actifs: items.filter((s) => s.status === 'actif').length,
+    eleves: items.filter((s) => s.studentType !== 'etudiant').length,
+    etudiants: items.filter((s) => s.studentType === 'etudiant').length,
     nouveaux: items.filter((s) => s.enrolledAt && s.enrolledAt > new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)).length,
-    soldeDu: items.reduce((sum, s) => sum + Math.max(0, (s.tuitionFee ?? 0) + 25000 - s.paidTotal), 0),
+    soldeDu: items.reduce((sum, s) => sum + Math.max(0, (s.tuitionFee ?? s.programFee ?? 0) + 25000 - s.paidTotal), 0),
   };
 
   res.json({ items, stats, term });
@@ -83,9 +94,12 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const scope = parentScope(req.user);
   const student = get(
     `SELECT s.*, c.name AS className, c.level, c.tuition_fee AS tuitionFee,
+            p.name AS programName, p.degree, p.tuition_fee AS programFee, f.name AS facultyName,
             t.first_name || ' ' || t.last_name AS mainTeacher
        FROM students s
        LEFT JOIN classes c ON c.id = s.class_id
+       LEFT JOIN programs p ON p.id = s.program_id
+       LEFT JOIN faculties f ON f.id = p.faculty_id
        LEFT JOIN teachers t ON t.id = c.teacher_id
       WHERE s.id = ? AND ${scope.sql}`,
     req.params.id, ...scope.params,
@@ -135,7 +149,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       ...student,
       paidTotal,
       outstanding,
-      annualFee: (student.tuitionFee ?? 0) + 25000,
+      annualFee: (student.tuitionFee ?? student.programFee ?? 0) + 25000,
     },
     payments,
     grades,
@@ -153,8 +167,9 @@ router.post('/', asyncHandler(async (req, res) => {
   const ts = now();
   run(
     `INSERT INTO students (id, matricule, first_name, last_name, gender, birth_date, class_id,
-       guardian_name, guardian_phone, guardian_email, address, status, enrolled_at, notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       guardian_name, guardian_phone, guardian_email, address, status, student_type, program_id,
+       academic_level, enrolled_at, notes, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id, data.matricule?.trim() || nextMatricule(), ...toRow(data, new Date().toISOString().slice(0, 10), ts),
   );
   const created = get('SELECT * FROM students WHERE id = ?', id);
@@ -175,12 +190,14 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     firstName: 'first_name', lastName: 'last_name', gender: 'gender', birthDate: 'birth_date',
     classId: 'class_id', guardianName: 'guardian_name', guardianPhone: 'guardian_phone',
     guardianEmail: 'guardian_email', address: 'address', status: 'status', notes: 'notes',
-    matricule: 'matricule',
+    matricule: 'matricule', studentType: 'student_type', programId: 'program_id',
+    academicLevel: 'academic_level',
   };
   for (const [key, column] of Object.entries(map)) {
     if (data[key] !== undefined) {
       fields.push(`${column} = ?`);
-      params.push(key === 'classId' ? data[key] || null : data[key] ?? null);
+      const nullable = ['classId', 'programId'].includes(key);
+      params.push(nullable ? data[key] || null : data[key] ?? null);
     }
   }
   if (!fields.length) throw badRequest('Aucune modification fournie.');

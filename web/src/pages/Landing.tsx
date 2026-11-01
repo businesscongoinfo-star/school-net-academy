@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import {
   ArrowRight, BarChart3, BookOpen, CalendarCheck, ClipboardList,
-  GraduationCap, Megaphone, ShieldCheck, Users, Wallet, Award, ArrowUpRight, Check,
+  GraduationCap, Megaphone, ShieldCheck, Users, Wallet, Award, ArrowUpRight, Check, CalendarDays,
 } from 'lucide-react';
 import { Logo } from '../components/logo';
 import { formatMoney } from '../lib/format';
@@ -31,6 +31,16 @@ const FEATURES = [
     text: 'Saisissez les notes par trimestre, calculez les moyennes pondérées et identifiez les élèves à accompagner.',
   },
   {
+    icon: GraduationCap,
+    title: 'Université & LMD',
+    text: "Facultés, filières Licence/Master, unités d'enseignement, crédits, amphis et soutenances — dans le même espace que l'école.",
+  },
+  {
+    icon: CalendarDays,
+    title: 'Emploi du temps & présences',
+    text: 'Planning hebdomadaire par classe ou amphithéâtre, puis pointage des présences, retards et absences en quelques clics.',
+  },
+  {
     icon: BookOpen,
     title: 'Cours en ligne',
     text: 'Publiez vos supports, exercices et quiz. Les élèves retrouvent leurs cours depuis leur espace personnel.',
@@ -54,6 +64,11 @@ const MODULES = [
   { name: 'Résultats', text: 'Notes par matière et par trimestre, moyennes pondérées et appréciations.' },
   { name: 'Cours en ligne', text: 'Catalogue de cours publiés ou en brouillon, nombre de leçons et d’apprenants.' },
   { name: 'Annonces', text: 'Messages publiés ou en brouillon, filtrés selon le profil connecté.' },
+  { name: 'Facultés & filières', text: 'Doyens, bâtiments, diplômes (Licence, Master, Doctorat, BTS) et frais annuels.' },
+  { name: "Unités d'enseignement", text: 'Maquette LMD : codes, semestres, crédits, volumes horaires et enseignants affectés.' },
+  { name: 'Emploi du temps', text: 'Séances par jour, salle, enseignant et type (Cours, TD, TP, Examen, Soutenance).' },
+  { name: 'Bibliothèque', text: 'Catalogue, exemplaires disponibles, prêts, retours et retards de restitution.' },
+  { name: 'Présences', text: 'Pointage par classe ou filière, séance par séance, avec taux de présence du jour.' },
 ];
 
 export function Landing() {
@@ -81,15 +96,16 @@ export function Landing() {
           <div>
             <span className="lp-eyebrow">
               <span className="pill">Nouveau</span>
-              Plateforme de gestion scolaire · Congo
+              Écoles & universités · Congo
             </span>
             <h1>
-              Toute votre école,<br />
-              <em>pilotée depuis un seul endroit.</em>
+              Votre école et votre université,<br />
+              <em>pilotées depuis un seul endroit.</em>
             </h1>
             <p className="lead">
-              Bienvenue sur School Net Academy : inscriptions, paiements, résultats, cours en ligne
-              et communication entre l'école, les parents, les enseignants et les élèves.
+              Bienvenue sur School Net Academy : élèves, étudiants, facultés, filières LMD, emploi du
+              temps, bibliothèque, présences, paiements et résultats — pour le primaire, le secondaire
+              et l'enseignement supérieur.
             </p>
             <div className="cta">
               <Link to="/connexion" className="btn btn-primary btn-lg">

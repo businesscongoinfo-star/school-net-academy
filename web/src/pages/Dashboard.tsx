@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   ArrowRight, ArrowUpRight, Award, BookOpen, CalendarClock, ClipboardList, GraduationCap,
   Megaphone, TrendingDown, TrendingUp, UserPlus, Users, Wallet, AlertTriangle, School, Bell,
+  Building2, Layers, Library, UserCheck, Clock,
 } from 'lucide-react';
 import { get } from '../lib/api';
 import type { DashboardData, Student } from '../lib/types';
@@ -156,7 +157,136 @@ export function Dashboard() {
           </>
         )}
 
-        {role === 'teacher' && (
+  
+      {role !== 'parent' && data && (
+        <div className="mt-16">
+          <Card>
+            <div className="card-head">
+              <div>
+                <h3>Université & vie scolaire</h3>
+                <p className="card-sub">
+                  {data.university.faculties} faculté(s) · {data.university.programs} filière(s) ·{' '}
+                  {data.university.courseUnits} unité(s) d'enseignement
+                </p>
+              </div>
+              <Link to="/app/filieres" className="small strong" style={{ color: 'var(--primary-700)' }}>
+                Gérer
+              </Link>
+            </div>
+            <div className="card-body">
+              <div className="grid grid-4">
+                <StatCard
+                  label="Étudiants"
+                  value={formatNumber(data.university.students)}
+                  icon={GraduationCap}
+                  tone="violet"
+                  foot={<span>{data.university.credits} crédits au catalogue</span>}
+                />
+                <StatCard
+                  label="Ouvrages"
+                  value={formatNumber(data.university.library.books)}
+                  icon={Library}
+                  tone="info"
+                  foot={<span>{data.university.library.available} exemplaires libres</span>}
+                />
+                <StatCard
+                  label="Prêts en cours"
+                  value={formatNumber(data.university.library.activeLoans)}
+                  icon={BookOpen}
+                  tone="amber"
+                  foot={<span>{data.university.library.lateLoans} en retard</span>}
+                />
+                <StatCard
+                  label="Présences du jour"
+                  value={data.today.attendance.total
+                    ? `${data.today.attendance.present}/${data.today.attendance.total}`
+                    : '—'}
+                  icon={UserCheck}
+                  foot={<span>{data.today.day} · {data.today.attendance.absent} absence(s)</span>}
+                />
+              </div>
+              <div className="row gap-8 wrap mt-16">
+                <Link to="/app/facultes"><Button size="sm" variant="secondary" icon={Building2}>Facultés</Button></Link>
+                <Link to="/app/unites"><Button size="sm" variant="secondary" icon={Layers}>Unités d'enseignement</Button></Link>
+                <Link to="/app/emploi-du-temps"><Button size="sm" variant="secondary" icon={CalendarClock}>Emploi du temps</Button></Link>
+                <Link to="/app/presences"><Button size="sm" variant="secondary" icon={UserCheck}>Présences</Button></Link>
+                {role === 'admin' && (
+                  <Link to="/app/bibliotheque"><Button size="sm" variant="secondary" icon={Library}>Bibliothèque</Button></Link>
+                )}
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {role !== 'parent' && data && (
+        <div className="mt-16" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)', gap: 18 }}>
+          <Card>
+            <div className="card-head">
+              <div>
+                <h3>Séances de {data.today.day.toLowerCase()}</h3>
+                <p className="card-sub">Emploi du temps du jour</p>
+              </div>
+              <Link to="/app/emploi-du-temps" className="small strong" style={{ color: 'var(--primary-700)' }}>Planning</Link>
+            </div>
+            <div className="card-body">
+              {data.today.schedule.length === 0 && (
+                <EmptyState icon={CalendarClock} title="Aucune séance aujourd'hui" description="Le planning reprend au prochain jour ouvré." />
+              )}
+              {data.today.schedule.map((session) => (
+                <div key={session.id} className="list-row">
+                  <span className="tag" style={{ minWidth: 82, justifyContent: 'center' }}>
+                    <Clock size={11} /> {session.startTime}
+                  </span>
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    <div className="cell-main truncate">{session.title}</div>
+                    <div className="cell-sub">
+                      {session.className ?? session.programName ?? '—'}
+                      {session.room ? ` · ${session.room}` : ''}
+                      {session.teacherName ? ` · ${session.teacherName}` : ''}
+                    </div>
+                  </div>
+                  <Badge tone="neutral">{session.kind}</Badge>
+                </div>
+              ))}
+            </div>
+          </Card>
+          <Card>
+            <div className="card-head">
+              <h3>Vie scolaire</h3>
+              <Link to="/app/presences" className="small strong" style={{ color: 'var(--primary-700)' }}>Pointer</Link>
+            </div>
+            <div className="card-body stack gap-12">
+              <div className="row" style={{ justifyContent: 'space-between' }}>
+                <span className="small muted">Taux de présence du jour</span>
+                <span className="strong">
+                  {data.today.attendance.total
+                    ? `${Math.round((data.today.attendance.present / data.today.attendance.total) * 100)}%`
+                    : '—'}
+                </span>
+              </div>
+              <ProgressBar
+                value={data.today.attendance.total
+                  ? Math.round((data.today.attendance.present / data.today.attendance.total) * 100)
+                  : 0}
+                tone="primary"
+              />
+              <div className="row gap-16 small muted">
+                <span>{data.today.attendance.present} présents</span>
+                <span>{data.today.attendance.late} retards</span>
+                <span>{data.today.attendance.absent} absents</span>
+              </div>
+              <div className="tiny muted">
+                {data.university.library.lateLoans > 0
+                  ? `${data.university.library.lateLoans} ouvrage(s) non rendus à la bibliothèque.`
+                  : 'Aucun retard de bibliothèque.'}
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {role === 'teacher' && (
           <>
             <StatCard label="Élèves suivis" icon={Users} loading={isLoading} value={formatNumber(kpis?.students)} foot={<span>Sur l'ensemble des classes</span>} />
             <StatCard label="Classes" icon={School} tone="info" loading={isLoading} value={formatNumber(kpis?.classes)} foot={<span>{kpis?.teachers ?? 0} enseignants actifs</span>} />
@@ -379,6 +509,135 @@ export function Dashboard() {
                   </div>
                 </div>
               ))}
+            </div>
+          </Card>
+        </div>
+      )}
+
+
+      {role !== 'parent' && data && (
+        <div className="mt-16">
+          <Card>
+            <div className="card-head">
+              <div>
+                <h3>Université & vie scolaire</h3>
+                <p className="card-sub">
+                  {data.university.faculties} faculté(s) · {data.university.programs} filière(s) ·{' '}
+                  {data.university.courseUnits} unité(s) d'enseignement
+                </p>
+              </div>
+              <Link to="/app/filieres" className="small strong" style={{ color: 'var(--primary-700)' }}>
+                Gérer
+              </Link>
+            </div>
+            <div className="card-body">
+              <div className="grid grid-4">
+                <StatCard
+                  label="Étudiants"
+                  value={formatNumber(data.university.students)}
+                  icon={GraduationCap}
+                  tone="violet"
+                  foot={<span>{data.university.credits} crédits au catalogue</span>}
+                />
+                <StatCard
+                  label="Ouvrages"
+                  value={formatNumber(data.university.library.books)}
+                  icon={Library}
+                  tone="info"
+                  foot={<span>{data.university.library.available} exemplaires libres</span>}
+                />
+                <StatCard
+                  label="Prêts en cours"
+                  value={formatNumber(data.university.library.activeLoans)}
+                  icon={BookOpen}
+                  tone="amber"
+                  foot={<span>{data.university.library.lateLoans} en retard</span>}
+                />
+                <StatCard
+                  label="Présences du jour"
+                  value={data.today.attendance.total
+                    ? `${data.today.attendance.present}/${data.today.attendance.total}`
+                    : '—'}
+                  icon={UserCheck}
+                  foot={<span>{data.today.day} · {data.today.attendance.absent} absence(s)</span>}
+                />
+              </div>
+              <div className="row gap-8 wrap mt-16">
+                <Link to="/app/facultes"><Button size="sm" variant="secondary" icon={Building2}>Facultés</Button></Link>
+                <Link to="/app/unites"><Button size="sm" variant="secondary" icon={Layers}>Unités d'enseignement</Button></Link>
+                <Link to="/app/emploi-du-temps"><Button size="sm" variant="secondary" icon={CalendarClock}>Emploi du temps</Button></Link>
+                <Link to="/app/presences"><Button size="sm" variant="secondary" icon={UserCheck}>Présences</Button></Link>
+                {role === 'admin' && (
+                  <Link to="/app/bibliotheque"><Button size="sm" variant="secondary" icon={Library}>Bibliothèque</Button></Link>
+                )}
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {role !== 'parent' && data && (
+        <div className="mt-16" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)', gap: 18 }}>
+          <Card>
+            <div className="card-head">
+              <div>
+                <h3>Séances de {data.today.day.toLowerCase()}</h3>
+                <p className="card-sub">Emploi du temps du jour</p>
+              </div>
+              <Link to="/app/emploi-du-temps" className="small strong" style={{ color: 'var(--primary-700)' }}>Planning</Link>
+            </div>
+            <div className="card-body">
+              {data.today.schedule.length === 0 && (
+                <EmptyState icon={CalendarClock} title="Aucune séance aujourd'hui" description="Le planning reprend au prochain jour ouvré." />
+              )}
+              {data.today.schedule.map((session) => (
+                <div key={session.id} className="list-row">
+                  <span className="tag" style={{ minWidth: 82, justifyContent: 'center' }}>
+                    <Clock size={11} /> {session.startTime}
+                  </span>
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    <div className="cell-main truncate">{session.title}</div>
+                    <div className="cell-sub">
+                      {session.className ?? session.programName ?? '—'}
+                      {session.room ? ` · ${session.room}` : ''}
+                      {session.teacherName ? ` · ${session.teacherName}` : ''}
+                    </div>
+                  </div>
+                  <Badge tone="neutral">{session.kind}</Badge>
+                </div>
+              ))}
+            </div>
+          </Card>
+          <Card>
+            <div className="card-head">
+              <h3>Vie scolaire</h3>
+              <Link to="/app/presences" className="small strong" style={{ color: 'var(--primary-700)' }}>Pointer</Link>
+            </div>
+            <div className="card-body stack gap-12">
+              <div className="row" style={{ justifyContent: 'space-between' }}>
+                <span className="small muted">Taux de présence du jour</span>
+                <span className="strong">
+                  {data.today.attendance.total
+                    ? `${Math.round((data.today.attendance.present / data.today.attendance.total) * 100)}%`
+                    : '—'}
+                </span>
+              </div>
+              <ProgressBar
+                value={data.today.attendance.total
+                  ? Math.round((data.today.attendance.present / data.today.attendance.total) * 100)
+                  : 0}
+                tone="primary"
+              />
+              <div className="row gap-16 small muted">
+                <span>{data.today.attendance.present} présents</span>
+                <span>{data.today.attendance.late} retards</span>
+                <span>{data.today.attendance.absent} absents</span>
+              </div>
+              <div className="tiny muted">
+                {data.university.library.lateLoans > 0
+                  ? `${data.university.library.lateLoans} ouvrage(s) non rendus à la bibliothèque.`
+                  : 'Aucun retard de bibliothèque.'}
+              </div>
             </div>
           </Card>
         </div>

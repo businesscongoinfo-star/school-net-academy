@@ -84,6 +84,9 @@ CREATE TABLE IF NOT EXISTS students (
   guardian_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
   address TEXT,
   status TEXT NOT NULL DEFAULT 'actif' CHECK (status IN ('actif','suspendu','diplome','parti')),
+  student_type TEXT NOT NULL DEFAULT 'eleve' CHECK (student_type IN ('eleve','etudiant')),
+  program_id TEXT,
+  academic_level TEXT,
   enrolled_at TEXT,
   notes TEXT,
   created_at TEXT NOT NULL,
@@ -172,14 +175,130 @@ CREATE TABLE IF NOT EXISTS grades (
   updated_at TEXT NOT NULL
 );
 
+
+CREATE TABLE IF NOT EXISTS faculties (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  code TEXT NOT NULL,
+  dean TEXT,
+  building TEXT,
+  phone TEXT,
+  email TEXT,
+  description TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS programs (
+  id TEXT PRIMARY KEY,
+  faculty_id TEXT REFERENCES faculties(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  code TEXT NOT NULL,
+  degree TEXT NOT NULL DEFAULT 'Licence'
+    CHECK (degree IN ('Licence','Master','Doctorat','BTS','Certificat')),
+  duration_years INTEGER NOT NULL DEFAULT 3,
+  total_credits INTEGER NOT NULL DEFAULT 180,
+  tuition_fee INTEGER NOT NULL DEFAULT 600000,
+  status TEXT NOT NULL DEFAULT 'ouverte' CHECK (status IN ('ouverte','fermee','brouillon')),
+  description TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS course_units (
+  id TEXT PRIMARY KEY,
+  program_id TEXT REFERENCES programs(id) ON DELETE CASCADE,
+  code TEXT NOT NULL,
+  title TEXT NOT NULL,
+  semester INTEGER NOT NULL DEFAULT 1,
+  credits INTEGER NOT NULL DEFAULT 6,
+  hours INTEGER NOT NULL DEFAULT 45,
+  teacher_id TEXT REFERENCES teachers(id) ON DELETE SET NULL,
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'actif' CHECK (status IN ('actif','archive')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS schedules (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  class_id TEXT REFERENCES classes(id) ON DELETE CASCADE,
+  program_id TEXT REFERENCES programs(id) ON DELETE CASCADE,
+  teacher_id TEXT REFERENCES teachers(id) ON DELETE SET NULL,
+  room TEXT,
+  day TEXT NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'Cours' CHECK (kind IN ('Cours','TD','TP','Examen','Soutenance')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS books (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  author TEXT,
+  isbn TEXT,
+  category TEXT,
+  copies_total INTEGER NOT NULL DEFAULT 1,
+  copies_available INTEGER NOT NULL DEFAULT 1,
+  shelf TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS loans (
+  id TEXT PRIMARY KEY,
+  book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  student_id TEXT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  loaned_at TEXT NOT NULL,
+  due_at TEXT NOT NULL,
+  returned_at TEXT,
+  status TEXT NOT NULL DEFAULT 'en_cours' CHECK (status IN ('en_cours','rendu','retard')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS attendance (
+  id TEXT PRIMARY KEY,
+  student_id TEXT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  class_id TEXT REFERENCES classes(id) ON DELETE SET NULL,
+  program_id TEXT REFERENCES programs(id) ON DELETE SET NULL,
+  date TEXT NOT NULL,
+  session TEXT,
+  status TEXT NOT NULL DEFAULT 'present' CHECK (status IN ('present','absent','retard','excuse')),
+  note TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_programs_faculty ON programs(faculty_id);
+CREATE INDEX IF NOT EXISTS idx_course_units_program ON course_units(program_id);
+CREATE INDEX IF NOT EXISTS idx_schedules_day ON schedules(day);
+CREATE INDEX IF NOT EXISTS idx_loans_student ON loans(student_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date);
+
 CREATE INDEX IF NOT EXISTS idx_students_class ON students(class_id);
 CREATE INDEX IF NOT EXISTS idx_payments_student ON payments(student_id);
 CREATE INDEX IF NOT EXISTS idx_grades_student ON grades(student_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 `;
 
+function ensureColumn(table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  if (!columns.includes(column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
 export function migrate() {
   db.exec(SCHEMA);
+  // Colonnes ajoutées pour le volet universitaire (bases créées avant cette version)
+  ensureColumn('students', 'student_type', "TEXT NOT NULL DEFAULT 'eleve'");
+  ensureColumn('students', 'program_id', 'TEXT');
+  ensureColumn('students', 'academic_level', 'TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_students_program ON students(program_id);');
 }
 
 export function isEmpty() {

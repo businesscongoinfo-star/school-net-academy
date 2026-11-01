@@ -66,3 +66,43 @@ export function appreciationOf(average: number | null): { label: string; tone: T
   if (average >= 10) return { label: 'Passable', tone: 'warning' };
   return { label: 'Insuffisant', tone: 'danger' };
 }
+
+export const PROGRAM_STATUS: Record<string, { label: string; tone: Tone }> = {
+  ouverte: { label: 'Ouverte', tone: 'success' },
+  fermee: { label: 'Fermée', tone: 'danger' },
+  brouillon: { label: 'Brouillon', tone: 'warning' },
+};
+
+export const UNIT_STATUS: Record<string, { label: string; tone: Tone }> = {
+  actif: { label: 'Actif', tone: 'success' },
+  archive: { label: 'Archivé', tone: 'neutral' },
+};
+
+export const LOAN_STATUS: Record<string, { label: string; tone: Tone }> = {
+  en_cours: { label: 'En cours', tone: 'info' },
+  rendu: { label: 'Rendu', tone: 'success' },
+  retard: { label: 'En retard', tone: 'danger' },
+};
+
+export const ATTENDANCE_STATUS: Record<string, { label: string; tone: Tone; short: string }> = {
+  present: { label: 'Présent', tone: 'success', short: 'Présent' },
+  absent: { label: 'Absent', tone: 'danger', short: 'Absent' },
+  retard: { label: 'En retard', tone: 'warning', short: 'Retard' },
+  excuse: { label: 'Excusé', tone: 'info', short: 'Excusé' },
+};
+
+export const DEGREE_TONE: Record<string, Tone> = {
+  Licence: 'primary',
+  Master: 'violet',
+  Doctorat: 'danger',
+  BTS: 'info',
+  Certificat: 'warning',
+};
+
+export const SCHEDULE_KIND: Record<string, { label: string; tone: Tone }> = {
+  Cours: { label: 'Cours', tone: 'primary' },
+  TD: { label: 'TD', tone: 'info' },
+  TP: { label: 'TP', tone: 'violet' },
+  Examen: { label: 'Examen', tone: 'danger' },
+  Soutenance: { label: 'Soutenance', tone: 'warning' },
+};

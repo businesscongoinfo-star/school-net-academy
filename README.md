@@ -1,7 +1,8 @@
 # School Net Academy
 
-Plateforme de gestion scolaire complète (full-stack) pour un établissement du Congo :
-inscriptions, élèves, classes, enseignants, paiements, résultats, cours en ligne et annonces —
+Plateforme complète (full-stack) de gestion **d'écoles et d'universités** au Congo :
+inscriptions, élèves, étudiants, classes, facultés, filières LMD, unités d'enseignement,
+emploi du temps, bibliothèque, présences, paiements, résultats, cours en ligne et annonces —
 avec authentification, tableau de bord, CRUD complet et base de données persistante.
 
 L'interface est en français et reprend l'identité du site public **School Net Academy**
@@ -18,8 +19,9 @@ npm start         # démarre l'API + l'interface sur http://localhost:3000
 ```
 
 La base SQLite est créée et remplie automatiquement au premier lancement avec un
-établissement de démonstration réaliste (≈190 élèves, 9 classes, 12 enseignants,
-760+ paiements, notes, admissions, cours et annonces).
+établissement de démonstration réaliste mêlant école et université : ≈238 inscrits
+(dont 48 étudiants), 9 classes, 4 facultés, 8 filières, 210 UE, 760+ paiements,
+emploi du temps, bibliothèque, présences, notes, admissions, cours et annonces.
 
 ### Comptes de démonstration
 
@@ -64,6 +66,12 @@ chacun de ces profils.
 | **Résultats** | Saisir, modifier, supprimer des notes par matière et trimestre, moyennes pondérées, classement, taux de réussite |
 | **Cours en ligne** | Créer, modifier, supprimer, publier/dépublier (optimiste) avec couverture colorée |
 | **Annonces** | Rédiger, publier/dépublier (optimiste), cibler une audience, supprimer |
+| **Facultés** | Créer, modifier, supprimer (protection si filières rattachées), consulter les filières et effectifs |
+| **Filières** | Licence, Master, Doctorat, BTS, Certificat : durée, crédits, frais, statut, maquette et étudiants |
+| **Unités d'enseignement** | Codes, semestres, crédits, volumes horaires, enseignant affecté, statut |
+| **Emploi du temps** | Planning hebdomadaire par classe ou filière : jour, horaires, salle, enseignant, type de séance |
+| **Bibliothèque** | Catalogue et exemplaires, prêt, retour (optimiste), retards, disponibilité recalculée |
+| **Présences** | Pointage par classe/filière et par séance, marquage rapide optimiste, « tout présent », taux du jour |
 
 ### Expérience utilisateur
 - Mise en page avec barre latérale (navigation adaptée au rôle) et barre supérieure collante.
@@ -143,6 +151,7 @@ school-net-academy/
 │       ├── components/     # ui, overlays, charts, layout, toast
 │       └── pages/          # Landing, Login, Dashboard, Students, Classes, Teachers,
 │                           # Admissions, Payments, Results, Courses, Announcements,
+│                           # Faculties, Programs, Units, Timetable, Library, Attendance,
 │                           # Settings, NotFound
 ├── scripts/smoke.mjs       # test de rendu SSR de toutes les pages
 └── data/                   # base SQLite générée (ignorée par Git)
@@ -151,11 +160,19 @@ school-net-academy/
 ### Modèle de données
 
 `users` · `sessions` · `students` · `classes` · `teachers` · `admissions` ·
-`payments` · `courses` · `announcements` · `grades`
+`payments` · `courses` · `announcements` · `grades` ·
+`faculties` · `programs` · `course_units` · `schedules` · `books` · `loans` · `attendance`
 
 Relations principales : un élève appartient à une classe ; une classe a un enseignant
 titulaire ; paiements et notes sont rattachés aux élèves (suppression en cascade) ;
 un compte parent est lié à ses élèves via `students.guardian_user_id`.
+
+Volet universitaire : une **faculté** regroupe des **filières** (`programs`), chaque filière
+contient des **unités d'enseignement** (`course_units`, crédits + semestre) ; un étudiant
+(`students.student_type = 'etudiant'`) est rattaché à une filière et à un niveau
+(`academic_level` L1→M2) ; `schedules` planifie les séances d'une classe **ou** d'une filière ;
+`books`/`loans` gèrent la bibliothèque (disponibilité = exemplaires − prêts en cours) ;
+`attendance` enregistre présences, absences, retards et justificatifs par date et séance.
 
 ### API REST
 
@@ -191,6 +208,24 @@ et renvoient `{ items, stats }`. Les erreurs sont renvoyées au format
 
 ---
 
+## Déploiement
+
+L'application est un **serveur Node.js** (Express + SQLite) qui sert l'API et l'interface compilée
+depuis un seul processus. Elle n'est donc **pas** un site statique : un hébergement qui ne sert que
+des fichiers (`index.html`, CSS, JS) affichera une page vide ou non stylée.
+
+Options possibles :
+
+1. **Serveur Node classique** (recommandé) : Render, Railway, Fly.io, VPS, Docker —
+   `npm install && npm run build && npm start` avec un volume persistant pour `data/school-net.db`.
+2. **Sandbox / prévisualisation intégrée** : c'est ce qui est fourni ici, l'URL de prévisualisation
+   pointe directement sur le processus Node.
+3. **Vercel** : uniquement avec adaptation — les routes `/api/*` doivent devenir des *serverless
+   functions* et la base migrer vers un service externe (Postgres, Turso/libSQL, Neon). Une simple
+   mise en ligne statique du dossier `web/dist` ne peut pas fonctionner sans backend.
+
+---
+
 ## Sécurité
 
 - Mots de passe hachés avec `scrypt` + sel unique ; jamais renvoyés par l'API.
@@ -216,6 +251,13 @@ Le script `server/seed.js` génère un établissement cohérent et déterministe
 - 18 demandes d'inscription à différents stades du parcours ;
 - notes du trimestre en cours et du trimestre précédent, avec coefficients ;
 - 10 cours en ligne (publiés, brouillons, archivé) et 7 annonces ;
+- **4 facultés** (FST, FLSH, FDSP, FSEG), **8 filières** (Licence et Master) et **210 unités
+  d'enseignement** — maquettes complètes : 30 UE / 180 crédits en Licence, 20 UE / 120 crédits en
+  Master, avec semestres, volumes horaires et enseignants affectés ;
+- **48 étudiants** répartis en L1→M2 avec matricules `UNI-…` ;
+- **emploi du temps** : séances pour les 9 classes et les 8 filières (Cours, TD, TP) ;
+- **bibliothèque** : 18 ouvrages, 20 prêts (en cours, rendus, en retard) ;
+- **présences** : pointages sur les 10 derniers jours ouvrés, élèves et étudiants ;
 - un compte parent rattaché à deux élèves.
 
 Régénérer les données : `npm run seed:reset` (le serveur doit être redémarré ensuite).

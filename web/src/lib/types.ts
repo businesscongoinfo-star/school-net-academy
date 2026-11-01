@@ -32,6 +32,11 @@ export interface Student {
   tuitionFee?: number | null;
   paidTotal: number;
   average?: number | null;
+  studentType?: 'eleve' | 'etudiant';
+  programId?: string | null;
+  programName?: string | null;
+  academicLevel?: string | null;
+  programFee?: number | null;
 }
 
 export interface Payment {
@@ -145,7 +150,11 @@ export interface Grade {
 export interface Meta {
   classes: (Pick<ClassRoom, 'id' | 'name' | 'level' | 'capacity' | 'tuitionFee'> & { studentCount: number })[];
   teachers: { id: string; name: string; subject: string; status: string }[];
-  students: { id: string; name: string; matricule: string; classId: string | null; className: string | null; status: string }[];
+  students: {
+    id: string; name: string; matricule: string; classId: string | null; className: string | null;
+    status: string; studentType?: string; programId?: string | null; programName?: string | null;
+    academicLevel?: string | null;
+  }[];
   subjects: string[];
   levels: string[];
   terms: string[];
@@ -153,6 +162,16 @@ export interface Meta {
   paymentTypes: string[];
   paymentMethods: string[];
   admissionSources: string[];
+  faculties: { id: string; name: string; code: string }[];
+  programs: {
+    id: string; name: string; code: string; degree: string; facultyId: string;
+    facultyName?: string | null; tuitionFee: number; totalCredits: number; studentCount: number;
+  }[];
+  degrees: string[];
+  academicLevels: string[];
+  days: string[];
+  attendanceSessions: string[];
+  scheduleKinds: string[];
   school?: { name: string; title?: string } | null;
 }
 
@@ -168,6 +187,19 @@ export interface DashboardData {
     students: number; newStudents: number; teachers: number; classes: number; courses: number;
     collected: number; pending: number; late: number; collected30d: number; payments30d: number;
     growth: number | null; admissionsPending: number; average: number | null; transactions: number;
+    universityStudents: number; programs: number; courseUnits: number; credits: number;
+  };
+  university: {
+    faculties: number; programs: number; students: number; courseUnits: number; credits: number;
+    library: { books: number; copies: number; available: number; activeLoans: number; lateLoans: number };
+  };
+  today: {
+    day: string;
+    schedule: {
+      id: string; title: string; room?: string | null; day: string; startTime: string; endTime: string;
+      kind: string; className?: string | null; programName?: string | null; teacherName?: string | null;
+    }[];
+    attendance: { date: string; total: number; present: number; absent: number; late: number };
   };
   revenueSeries: { month: string; total: number }[];
   studentsByLevel: { level: string; total: number }[];
@@ -186,7 +218,11 @@ export interface DashboardData {
 }
 
 export interface StudentDetail {
-  student: Student & { annualFee: number; outstanding: number; guardian_user_id?: string | null; mainTeacher?: string | null };
+  student: Student & {
+    annualFee: number; outstanding: number; guardian_user_id?: string | null;
+    mainTeacher?: string | null; facultyName?: string | null; degree?: string | null;
+    programFee?: number | null;
+  };
   payments: Payment[];
   grades: Grade[];
   averages: { term: string; average: number | null; subjects: { subject: string; average: number; count: number; coefficient: number }[] }[];
@@ -201,4 +237,122 @@ export interface ResultRow {
   subjects: Record<string, { id: string; score: number; coefficient: number; comment?: string | null }>;
   average: number | null;
   appreciation: string;
+}
+
+/* ----------------------------- Université ------------------------------- */
+
+export interface Faculty {
+  id: string;
+  name: string;
+  code: string;
+  dean?: string | null;
+  building?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  description?: string | null;
+  programCount: number;
+  unitCount: number;
+  studentCount: number;
+}
+
+export type Degree = 'Licence' | 'Master' | 'Doctorat' | 'BTS' | 'Certificat';
+
+export interface Program {
+  id: string;
+  name: string;
+  code: string;
+  facultyId: string;
+  facultyName?: string | null;
+  facultyCode?: string | null;
+  degree: Degree;
+  durationYears: number;
+  totalCredits: number;
+  tuitionFee: number;
+  status: 'ouverte' | 'fermee' | 'brouillon';
+  description?: string | null;
+  studentCount: number;
+  unitCount: number;
+  creditedUnits: number;
+}
+
+export interface CourseUnit {
+  id: string;
+  programId: string;
+  programName?: string | null;
+  facultyCode?: string | null;
+  degree?: string | null;
+  code: string;
+  title: string;
+  semester: number;
+  credits: number;
+  hours: number;
+  teacherId?: string | null;
+  teacherName?: string | null;
+  description?: string | null;
+  status: 'actif' | 'archive';
+}
+
+export interface Schedule {
+  id: string;
+  title: string;
+  classId?: string | null;
+  className?: string | null;
+  programId?: string | null;
+  programName?: string | null;
+  degree?: string | null;
+  teacherId?: string | null;
+  teacherName?: string | null;
+  room?: string | null;
+  day: string;
+  startTime: string;
+  endTime: string;
+  kind: 'Cours' | 'TD' | 'TP' | 'Examen' | 'Soutenance';
+}
+
+export interface Book {
+  id: string;
+  title: string;
+  author?: string | null;
+  isbn?: string | null;
+  category?: string | null;
+  copiesTotal: number;
+  copiesAvailable: number;
+  shelf?: string | null;
+  activeLoans: number;
+}
+
+export interface Loan {
+  id: string;
+  bookId: string;
+  studentId: string;
+  bookTitle: string;
+  bookAuthor?: string | null;
+  studentName: string;
+  firstName: string;
+  lastName: string;
+  matricule: string;
+  className?: string | null;
+  programName?: string | null;
+  loanedAt: string;
+  dueAt: string;
+  returnedAt?: string | null;
+  status: 'en_cours' | 'rendu' | 'retard';
+  late?: boolean;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  studentId: string;
+  studentName: string;
+  firstName: string;
+  lastName: string;
+  matricule: string;
+  classId?: string | null;
+  className?: string | null;
+  programId?: string | null;
+  programName?: string | null;
+  date: string;
+  session?: string | null;
+  status: 'present' | 'absent' | 'retard' | 'excuse';
+  note?: string | null;
 }
