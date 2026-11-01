@@ -298,7 +298,13 @@ export function migrate() {
   ensureColumn('students', 'student_type', "TEXT NOT NULL DEFAULT 'eleve'");
   ensureColumn('students', 'program_id', 'TEXT');
   ensureColumn('students', 'academic_level', 'TEXT');
+  // Carte d'identité scolaire (QR + code-barres + badge NFC)
+  ensureColumn('students', 'card_code', 'TEXT');
+  ensureColumn('students', 'nfc_tag', 'TEXT');
+  ensureColumn('students', 'card_issued_at', 'TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS idx_students_program ON students(program_id);');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_students_card ON students(card_code) WHERE card_code IS NOT NULL;');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_students_nfc ON students(nfc_tag) WHERE nfc_tag IS NOT NULL;');
 }
 
 export function isEmpty() {

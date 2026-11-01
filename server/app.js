@@ -29,6 +29,7 @@ import { facultiesRouter, programsRouter, unitsRouter } from './routes/universit
 import scheduleRoutes from './routes/schedules.js';
 import libraryRoutes from './routes/library.js';
 import attendanceRoutes from './routes/attendance.js';
+import cardRoutes from './routes/cards.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(__dirname, '..', 'web', 'dist');
@@ -189,6 +190,7 @@ app.use('/api/course-units', requireAuth, unitsRouter);
 app.use('/api/schedules', requireAuth, scheduleRoutes);
 app.use('/api/library', requireAuth, libraryRoutes);
 app.use('/api/attendance', requireAuth, attendanceRoutes);
+app.use('/api/cards', requireAuth, cardRoutes);
 
 app.get('/api/activity', requireAuth, (req, res) => {
   res.json({ items: recentActivity(12) });

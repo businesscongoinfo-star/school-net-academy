@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { all, get, run, now, uid } from '../db.js';
 import { parseBody, asyncHandler, notFound, conflict, parentScope, termNow, forbidden, badRequest } from '../helpers.js';
+import { issueCard } from './cards.js';
 
 const router = Router();
 
@@ -172,6 +173,8 @@ router.post('/', asyncHandler(async (req, res) => {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id, data.matricule?.trim() || nextMatricule(), ...toRow(data, new Date().toISOString().slice(0, 10), ts),
   );
+  // Chaque nouvel élève reçoit immédiatement sa carte (QR + code-barres + badge NFC).
+  issueCard(id);
   const created = get('SELECT * FROM students WHERE id = ?', id);
   res.status(201).json({ student: created });
 }));

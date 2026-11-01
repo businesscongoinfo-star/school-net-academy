@@ -14,6 +14,7 @@ import {
   Badge, Button, Card, EmptyState, Field, Input, PageHeader, SearchInput, Select, StatCard, TableSkeleton,
 } from '../components/ui';
 import { useToast } from '../components/toast';
+import { ScanPanel } from '../components/scan-panel';
 
 type Status = 'present' | 'absent' | 'retard' | 'excuse';
 
@@ -172,7 +173,13 @@ export function Attendance() {
         )}
       />
 
-      <div className="grid grid-4">
+      <Card className="mt-16">
+        <div className="card-body">
+          <ScanPanel />
+        </div>
+      </Card>
+
+      <div className="grid grid-4 mt-16">
         <StatCard label="Pointés" value={marked} icon={Users} loading={isLoading} foot={<span>sur {roster.length} inscrit(s)</span>} />
         <StatCard label="Présents" value={counts.present} icon={CheckCircle2} tone="info" loading={isLoading} foot={<span>{counts.retard} retard(s)</span>} />
         <StatCard label="Absents" value={counts.absent} icon={XCircle} tone="danger" loading={isLoading} foot={<span>{counts.excuse} excusé(s)</span>} />

@@ -25,6 +25,7 @@ const Units = lazy(() => import('./pages/Units').then((module) => ({ default: mo
 const Timetable = lazy(() => import('./pages/Timetable').then((module) => ({ default: module.Timetable })));
 const LibraryPage = lazy(() => import('./pages/Library').then((module) => ({ default: module.Library })));
 const Attendance = lazy(() => import('./pages/Attendance').then((module) => ({ default: module.Attendance })));
+const Cards = lazy(() => import('./pages/Cards').then((module) => ({ default: module.Cards })));
 const NotFound = lazy(() => import('./pages/NotFound').then((module) => ({ default: module.NotFound })));
 
 function Splash() {
@@ -121,6 +122,7 @@ export function App() {
         <Route path="emploi-du-temps" element={page(<RoleGate roles={['admin', 'teacher']}><Timetable /></RoleGate>)} />
         <Route path="bibliotheque" element={page(<RoleGate roles={['admin']}><LibraryPage /></RoleGate>)} />
         <Route path="presences" element={page(<RoleGate roles={['admin', 'teacher']}><Attendance /></RoleGate>)} />
+        <Route path="cartes" element={page(<RoleGate roles={['admin', 'teacher']}><Cards /></RoleGate>)} />
         <Route path="parametres" element={page(<Settings />)} />
       </Route>
 

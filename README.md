@@ -21,7 +21,8 @@ npm start         # démarre l'API + l'interface sur http://localhost:3000
 La base SQLite est créée et remplie automatiquement au premier lancement avec un
 établissement de démonstration réaliste mêlant école et université : ≈238 inscrits
 (dont 48 étudiants), 9 classes, 4 facultés, 8 filières, 210 UE, 760+ paiements,
-emploi du temps, bibliothèque, présences, notes, admissions, cours et annonces.
+emploi du temps, bibliothèque, présences, notes, admissions, cours et annonces —
+chaque inscrit disposant déjà de sa carte scolaire (12 badges NFC de démonstration).
 
 ### Comptes de démonstration
 
@@ -71,7 +72,21 @@ chacun de ces profils.
 | **Unités d'enseignement** | Codes, semestres, crédits, volumes horaires, enseignant affecté, statut |
 | **Emploi du temps** | Planning hebdomadaire par classe ou filière : jour, horaires, salle, enseignant, type de séance |
 | **Bibliothèque** | Catalogue et exemplaires, prêt, retour (optimiste), retards, disponibilité recalculée |
-| **Présences** | Pointage par classe/filière et par séance, marquage rapide optimiste, « tout présent », taux du jour |
+| **Présences** | Pointage par classe/filière et par séance, marquage rapide optimiste, « tout présent », taux du jour, **pointage par carte** (QR / douchette / badge NFC) |
+| **Cartes scolaires** | Une carte d'identité par élève et par étudiant : QR code, code-barres **Code 128**, badge **NFC**, aperçu, impression, réémission, association d'un badge, signature de présence en un clic |
+
+### Cartes scolaires & pointage sans contact
+- **Carte émise automatiquement** à la création d'un élève (code unique `SNA-26-XXXXXX`,
+  année scolaire, validité, classe/filière, matricule, date de naissance, tuteur).
+- **QR code** (URL de pointage, donc lisible par n'importe quel téléphone) et **code-barres
+  Code 128** (douchettes USB / Bluetooth) imprimés sur la carte, rendus côté navigateur.
+- **Badge NFC** : programmation d'un support (écriture d'URL NDEF) ou association d'un badge
+  existant, via Web NFC (Chrome Android) ; repli automatique sur le QR / la douchette ailleurs.
+- **Signature de présence** : scan → recherche par code carte, tag NFC, matricule ou URL,
+  enregistrement du pointage du jour (présent / retard), détection du doublon (« déjà pointé »),
+  notification et mise à jour immédiate des compteurs.
+- Impression au format carte bancaire (85,6 × 54 mm) et page « Cartes scolaires » dédiée
+  (statistiques, filtres, aperçu, actions).
 
 ### Expérience utilisateur
 - Mise en page avec barre latérale (navigation adaptée au rôle) et barre supérieure collante.
@@ -102,7 +117,7 @@ chacun de ces profils.
 
 | Couche | Technologie |
 | --- | --- |
-| Frontend | React 19, TypeScript, Vite, React Router, TanStack Query, Recharts, Lucide |
+| Frontend | React 19, TypeScript, Vite, React Router, TanStack Query, Recharts, Lucide, `qrcode.react` (QR), `jsbarcode` (Code 128) |
 | Styles | CSS design system maison (variables, composants, responsive), polices Inter & Sora auto-hébergées |
 | Backend | Node.js 22, Express 4, validation Zod |
 | Base de données | SQLite via `node:sqlite` (module natif, aucune dépendance binaire) |

@@ -1066,3 +1066,166 @@ table.table { width: 100%; border-collapse: separate; border-spacing: 0; font-si
   border-radius: 9px; padding: 9px 11px; margin-bottom: 18px;
   max-height: 120px; overflow: auto; white-space: pre-wrap; word-break: break-word;
 }
+
+/* ==========================================================================
+   Cartes scolaires — identité, QR, code-barres, NFC
+   ========================================================================== */
+
+/* ------------------------------- La carte -------------------------------- */
+.idc {
+  --idc-ink: #0a1f1b;
+  position: relative;
+  width: 100%;
+  max-width: 430px;
+  aspect-ratio: 85.6 / 54;
+  border-radius: 14px;
+  overflow: hidden;
+  color: var(--idc-ink);
+  background:
+    radial-gradient(120% 90% at 100% 0%, #d8f0ea 0%, #ffffff 46%) ,
+    linear-gradient(160deg, #ffffff 0%, #f7fbfa 100%);
+  border: 1px solid #d7e5e1;
+  box-shadow: 0 18px 40px -26px rgba(10, 31, 27, 0.55), 0 2px 8px rgba(10, 31, 27, 0.06);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-sans);
+}
+.idc::before {
+  content: '';
+  position: absolute; inset: 0 0 auto 0; height: 4px;
+  background: linear-gradient(90deg, #0f766e, #14b8a6 45%, #c2740b);
+}
+.idc-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 3.4% 4% 0;
+}
+.idc-brand { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.idc-logo {
+  width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center;
+  background: linear-gradient(150deg, #0f766e, #0b5750); color: #eafff9; flex: none;
+}
+.idc-school { font-family: var(--font-display); font-size: 9.6px; font-weight: 700; letter-spacing: 0.01em; line-height: 1.1; }
+.idc-tagline { font-size: 6.6px; letter-spacing: 0.14em; text-transform: uppercase; color: #5d7a74; }
+.idc-year { text-align: right; line-height: 1.1; }
+.idc-year span { display: block; font-size: 6.2px; letter-spacing: 0.12em; text-transform: uppercase; color: #77908a; }
+.idc-year strong { font-size: 8.6px; font-weight: 700; }
+
+.idc-body { display: flex; gap: 3%; padding: 2.6% 4% 0; flex: 1; min-height: 0; }
+.idc-identity { display: flex; gap: 3.5%; flex: 1; min-width: 0; }
+.idc-photo {
+  width: 20%; aspect-ratio: 3 / 4; border-radius: 7px; flex: none;
+  display: grid; place-items: center;
+  font-family: var(--font-display); font-size: 15px; font-weight: 700; letter-spacing: 0.02em;
+  color: #0b4f49; background: linear-gradient(155deg, #d5efe9, #eef8f5);
+  border: 1px solid #c9e4dd;
+}
+.idc-fields { min-width: 0; display: flex; flex-direction: column; gap: 2.2%; }
+.idc-name {
+  font-family: var(--font-display); font-size: 12.4px; font-weight: 700; line-height: 1.15;
+  text-transform: uppercase; letter-spacing: -0.01em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.idc-role { font-size: 7.4px; color: #2f6d66; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.idc-meta { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 7px; color: #33544f; }
+.idc-meta em { font-style: normal; color: #7d9993; letter-spacing: 0.04em; text-transform: uppercase; font-size: 6px; margin-right: 3px; }
+
+.idc-code { width: 27%; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3%; }
+.idc-qr { background: #fff; padding: 3px; border-radius: 6px; border: 1px solid #e4eeeb; line-height: 0; }
+.idc-barcode { width: 100%; line-height: 0; text-align: center; }
+.idc-barcode svg { width: 100%; height: auto; }
+.idc-code-text { font-size: 6.4px; letter-spacing: 0.1em; color: #4a6b65; font-weight: 600; }
+
+.idc-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 1.6% 4% 2.4%;
+  font-size: 6.4px; color: #6d8a84; letter-spacing: 0.04em;
+}
+.idc-foot span { display: inline-flex; align-items: center; gap: 4px; }
+
+.idc-sm { max-width: 320px; }
+
+/* ------------------------------ Liste cartes ------------------------------ */
+.cards-layout { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr); gap: 18px; align-items: start; }
+@media (max-width: 1100px) { .cards-layout { grid-template-columns: minmax(0, 1fr); } }
+
+.filters-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.filters-row .search { flex: 1; min-width: 200px; }
+.filters-row select { min-width: 150px; }
+
+.card-list { display: flex; flex-direction: column; }
+.card-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 9px 10px; border: 1px solid transparent; border-radius: 11px;
+  background: transparent; cursor: pointer; transition: background .12s, border-color .12s;
+  font: inherit; color: inherit;
+}
+.card-row + .card-row { border-top: 1px solid #f0f4f2; }
+.card-row:hover { background: var(--surface-2); }
+.card-row.active { background: var(--primary-softer); border-color: #cfe8e2; }
+.card-row-avatar {
+  width: 34px; height: 34px; border-radius: 11px; flex: none; display: grid; place-items: center;
+  background: linear-gradient(150deg, #dff2ec, #eef8f5); color: #0b5f57;
+  font-weight: 700; font-size: 12px; letter-spacing: 0.02em;
+}
+.card-row-name { display: block; font-weight: 600; font-size: 13px; }
+.card-row-sub { display: block; font-size: 11.5px; color: var(--ink-500); }
+.card-row-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.04em;
+  color: var(--ink-500); background: #f3f7f5; border: 1px solid #e6eeeb; border-radius: 6px;
+  padding: 2px 6px; white-space: nowrap;
+}
+.card-row-flags { display: flex; gap: 5px; }
+.flag { width: 21px; height: 21px; border-radius: 6px; display: grid; place-items: center; }
+.flag.ok { background: var(--success-soft); color: var(--success); }
+.flag.warn { background: var(--amber-soft); color: var(--amber); }
+.flag.nfc { background: var(--violet-soft); color: var(--violet); }
+
+.info-line { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; background: var(--surface-2); border-radius: 9px; }
+.info-line .strong { font-size: 12.5px; }
+
+/* ------------------------------ Scan / pointage --------------------------- */
+.scan-panel { display: flex; flex-direction: column; gap: 11px; }
+.scan-head { display: flex; align-items: center; gap: 10px; }
+.scan-icon {
+  width: 34px; height: 34px; border-radius: 10px; flex: none; display: grid; place-items: center;
+  background: var(--primary-soft); color: var(--primary-700);
+}
+.scan-status { display: flex; gap: 6px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px; font: inherit; font-size: 11.5px;
+  padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line-strong);
+  background: var(--surface); color: var(--ink-500); cursor: pointer;
+}
+.chip.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.scan-input-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.scan-input-row .input { flex: 1; min-width: 220px; }
+.scan-error {
+  display: flex; align-items: center; gap: 7px; font-size: 12.5px;
+  color: #8a3f31; background: #fdf3f1; border: 1px solid #f3d7d2; border-radius: 9px; padding: 8px 11px;
+}
+.scan-result {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 11px;
+  background: var(--success-soft); border: 1px solid #cfeade;
+}
+.scan-result.again { background: var(--amber-soft); border-color: #f2dfc0; }
+.scan-avatar {
+  width: 32px; height: 32px; border-radius: 10px; flex: none; display: grid; place-items: center;
+  background: #ffffffaa; border: 1px solid #ffffff88; font-weight: 700; font-size: 12px; color: #14532d;
+}
+.scan-badge {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.02em; padding: 4px 9px; border-radius: 999px;
+  background: #ffffff; color: var(--success); border: 1px solid #cfeade; white-space: nowrap;
+}
+.scan-badge.again { color: var(--amber); border-color: #f2dfc0; }
+
+/* ------------------------------- Impression ------------------------------- */
+@media print {
+  body.printing-card * { visibility: hidden !important; }
+  body.printing-card .idc,
+  body.printing-card .idc * { visibility: visible !important; }
+  body.printing-card .idc {
+    position: fixed; inset: 20mm auto auto 20mm; margin: 0;
+    width: 85.6mm; max-width: none; box-shadow: none;
+  }
+  @page { size: A4 portrait; margin: 0; }
+}

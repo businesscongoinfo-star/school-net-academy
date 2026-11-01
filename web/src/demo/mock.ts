@@ -327,6 +327,97 @@ export async function demoRequest<T>(method: string, rawPath: string, body?: unk
 
   /* ------------------------------ écritures ------------------------------ */
 
+  /* --------------------------- cartes scolaires --------------------------- */
+  if (root === 'cards') {
+    const list = views.students.items as Json[];
+    const codeOf = (student: Json) => {
+      let hash = 0;
+      for (const character of String(student.id)) hash = (hash * 31 + character.charCodeAt(0)) % 60466176;
+      return `SNA-26-${hash.toString(36).toUpperCase().padStart(6, '2').slice(-6)}`;
+    };
+    const year = new Date().getFullYear();
+    const toCard = (student: Json) => {
+      const cardCode = codeOf(student);
+      return {
+        studentId: student.id,
+        firstName: student.firstName,
+        lastName: student.lastName,
+        matricule: student.matricule,
+        gender: student.gender,
+        birthDate: student.birthDate ?? null,
+        status: student.status,
+        studentType: student.studentType ?? 'eleve',
+        academicLevel: student.academicLevel ?? null,
+        cardCode,
+        nfcTag: null,
+        issuedAt: new Date().toISOString(),
+        guardianName: student.guardianName ?? null,
+        guardianPhone: student.guardianPhone ?? null,
+        classId: student.classId ?? null,
+        className: student.className ?? null,
+        level: student.level ?? null,
+        programId: student.programId ?? null,
+        programName: student.programName ?? null,
+        age: null,
+        schoolName: 'School Net Academy',
+        schoolShort: 'SNA',
+        city: 'Brazzaville',
+        schoolYear: `${year}-${year + 1}`,
+        validUntil: `${year + 1}-07-31`,
+        scanPath: `/app/presences?scan=${cardCode}`,
+      };
+    };
+
+    if (method === 'GET' && !id) {
+      const items = list.map(toCard);
+      return {
+        items, date: new Date().toISOString().slice(0, 10),
+        stats: { total: items.length, issued: items.length, missing: 0, nfc: 0, scansToday: 0 },
+      } as T;
+    }
+    if (method === 'GET' && id) {
+      const student = list.find((item) => item.id === id);
+      if (!student) fail(404, 'Élève introuvable.');
+      return { card: toCard(student), history: [] } as T;
+    }
+    if (method === 'POST' && id === 'scan') {
+      const payload = (body ?? {}) as Json;
+      const raw = String(payload.code ?? '').trim();
+      const code = raw.includes('scan=') ? raw.split('scan=')[1].split('&')[0] : raw;
+      const student = list.find((item) => codeOf(item) === code || item.matricule === code);
+      if (!student) fail(404, `Aucune carte ne correspond à « ${code.slice(0, 40)} ».`);
+      return {
+        card: toCard(student),
+        attendance: {
+          id: uid('att'), date: new Date().toISOString().slice(0, 10), session: 'Journée',
+          status: payload.status === 'retard' ? 'retard' : 'present', note: 'Pointage démo (carte)',
+          createdAt: new Date().toISOString(),
+        },
+        alreadyMarked: false,
+        previousStatus: null,
+      } as T;
+    }
+    if (method === 'POST' && extra === 'sign') {
+      const student = list.find((item) => item.id === id);
+      if (!student) fail(404, 'Élève introuvable.');
+      return {
+        card: toCard(student),
+        attendance: {
+          id: uid('att'), date: new Date().toISOString().slice(0, 10), session: 'Journée',
+          status: 'present', note: 'Pointage démo (carte)', createdAt: new Date().toISOString(),
+        },
+        alreadyMarked: false,
+        previousStatus: null,
+      } as T;
+    }
+    if (method === 'POST' && extra === 'issue') {
+      const student = list.find((item) => item.id === id);
+      if (!student) fail(404, 'Élève introuvable.');
+      return { card: toCard(student) } as T;
+    }
+    fail(404, 'Route inconnue.');
+  }
+
   const collections: Record<string, { key: string; items: Json[] }> = {
     students: { key: 'student', items: views.students.items },
     classes: { key: 'class', items: data.classes.items },

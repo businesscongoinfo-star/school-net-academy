@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Pencil, Trash2, Users, UserPlus, Wallet, GraduationCap, Phone, Mail, MapPin,
   CalendarDays, FileText, ArrowRight, SearchX, Eye, Award, AlertTriangle, Download,
+  CreditCard, Printer,
 } from 'lucide-react';
 import { del, get, patch, post, qs, ApiError } from '../lib/api';
-import type { ListResponse, Meta, Student, StudentDetail } from '../lib/types';
+import type { ListResponse, Meta, SchoolCard, Student, StudentDetail } from '../lib/types';
 import { useAuth } from '../lib/auth';
 import { PAYMENT_STATUS, STUDENT_STATUS, appreciationOf, labelOf, toneOf } from '../lib/labels';
 import { ageFrom, colorFor, formatAverage, formatDate, formatMoney, relativeTime, toDateInput } from '../lib/format';
@@ -17,6 +18,7 @@ import {
 } from '../components/ui';
 import { Drawer, Modal, ConfirmDialog } from '../components/overlays';
 import { useToast } from '../components/toast';
+import { StudentIdCard } from '../components/student-card';
 
 const PAGE_SIZE = 12;
 
@@ -51,6 +53,7 @@ export function Students() {
   const [formError, setFormError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<Student | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [cardPreview, setCardPreview] = useState<SchoolCard | null>(null);
 
   const meta = useQuery({ queryKey: ['meta'], queryFn: () => get<Meta>('/meta') });
 
@@ -108,16 +111,37 @@ export function Students() {
     setFormOpen(true);
   }
 
+  async function openCard(studentId: string) {
+    try {
+      const { card } = await get<{ card: SchoolCard }>(`/cards/${studentId}`);
+      setCardPreview(card);
+    } catch (error) {
+      toast.error('Carte indisponible', error instanceof ApiError ? error.message : 'Réessayez.');
+    }
+  }
+
   const saveMutation = useMutation({
     mutationFn: (payload: FormState) => (
       editing ? patch<{ student: Student }>(`/students/${editing.id}`, payload) : post<{ student: Student }>('/students', payload)
     ),
-    onSuccess: () => {
+    onSuccess: async (result) => {
       queryClient.invalidateQueries({ queryKey: ['students'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['meta'] });
-      toast.success(editing ? 'Fiche mise à jour' : 'Élève inscrit', editing ? `${form.firstName} ${form.lastName} a été modifié.` : `${form.firstName} ${form.lastName} rejoint la scolarité.`);
+      queryClient.invalidateQueries({ queryKey: ['cards'] });
       setFormOpen(false);
+      if (editing) {
+        toast.success('Fiche mise à jour', `${form.firstName} ${form.lastName} a été modifié.`);
+        return;
+      }
+      toast.success('Élève inscrit', `${form.firstName} ${form.lastName} rejoint la scolarité.`);
+      // La carte scolaire est émise automatiquement : on l'affiche tout de suite.
+      try {
+        const { card } = await get<{ card: SchoolCard }>(`/cards/${result.student.id}`);
+        setCardPreview(card);
+      } catch {
+        /* la carte reste consultable depuis la page Cartes scolaires */
+      }
     },
     onError: (error: ApiError) => setFormError(error.message),
   });
@@ -317,6 +341,7 @@ export function Students() {
                         <td>
                           <div className="actions" onClick={(event) => event.stopPropagation()}>
                             <IconButton icon={Eye} label="Voir la fiche" onClick={() => setDetailId(student.id)} />
+                            <IconButton icon={CreditCard} label="Carte scolaire" onClick={() => openCard(student.id)} />
                             {isAdmin && <IconButton icon={Pencil} label="Modifier" onClick={() => openEdit(student)} />}
                             {isAdmin && <IconButton icon={Trash2} label="Supprimer" tone="danger" onClick={() => setToDelete(student)} />}
                           </div>
@@ -448,7 +473,39 @@ export function Students() {
         canManage={isAdmin}
         onEdit={(student) => { setDetailId(null); openEdit(student); }}
         onDelete={(student) => { setDetailId(null); setToDelete(student); }}
+        onCard={(id) => { setDetailId(null); openCard(id); }}
       />
+
+      <Modal
+        open={Boolean(cardPreview)}
+        onClose={() => setCardPreview(null)}
+        title="Carte scolaire créée"
+        description={cardPreview ? `${cardPreview.firstName} ${cardPreview.lastName} · ${cardPreview.matricule}` : undefined}
+        wide
+        footer={(
+          <>
+            <Link to="/app/cartes" className="btn btn-ghost">Gérer les cartes</Link>
+            <Button variant="secondary" icon={Printer} onClick={() => {
+              document.body.classList.add('printing-card');
+              window.setTimeout(() => {
+                window.print();
+                window.setTimeout(() => document.body.classList.remove('printing-card'), 400);
+              }, 60);
+            }}>Imprimer</Button>
+            <Button variant="primary" onClick={() => setCardPreview(null)}>Terminé</Button>
+          </>
+        )}
+      >
+        {cardPreview && (
+          <div className="stack gap-14">
+            <StudentIdCard card={cardPreview} />
+            <div className="tiny muted">
+              QR code, code-barres Code 128{cardPreview.nfcTag ? ` et badge NFC ${cardPreview.nfcTag}` : ' et badge NFC'} :
+              la même carte sert à signer les présences depuis la page Présences ou Cartes scolaires.
+            </div>
+          </div>
+        )}
+      </Modal>
     </>
   );
 }
@@ -458,10 +515,11 @@ export function Students() {
 /* -------------------------------------------------------------------------- */
 
 function StudentDrawer({
-  studentId, onClose, canManage, onEdit, onDelete,
+  studentId, onClose, canManage, onEdit, onDelete, onCard,
 }: {
   studentId: string | null; onClose: () => void; canManage: boolean;
   onEdit: (student: Student) => void; onDelete: (student: Student) => void;
+  onCard: (studentId: string) => void;
 }) {
   const [tab, setTab] = useState<'apercu' | 'paiements' | 'resultats'>('apercu');
   const navigate = useNavigate();
@@ -514,7 +572,7 @@ function StudentDrawer({
           </div>
 
           <div className="drawer-body">
-            <div className="row gap-8 wrap">
+            <div className="row gap-8 wrap" style={{ justifyContent: 'space-between' }}>
               <Tabs
                 value={tab}
                 onChange={setTab}
@@ -524,6 +582,9 @@ function StudentDrawer({
                   { value: 'resultats', label: 'Résultats' },
                 ]}
               />
+              <Button size="sm" variant="secondary" icon={CreditCard} onClick={() => onCard(studentId!)}>
+                Carte scolaire
+              </Button>
             </div>
 
             {tab === 'apercu' && (

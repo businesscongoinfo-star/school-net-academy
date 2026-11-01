@@ -667,6 +667,71 @@ async function main() {
     expect(res.status === 403, `statut ${res.status}`);
   });
 
+  // ─── Cartes scolaires (QR / code-barres / NFC) ───────────────────────────
+  let cardCode = null;
+  let cardStudentId = null;
+  await check('Cartes', 'GET /api/cards', async () => {
+    const json = await admin.ok('GET', '/api/cards');
+    expect(Array.isArray(json.items) && json.items.length > 0, 'liste vide');
+    expect(json.stats && typeof json.stats.issued === 'number', 'statistiques manquantes');
+    const withCode = json.items.find((item) => item.cardCode);
+    expect(withCode, 'aucune carte émise');
+    cardCode = withCode.cardCode;
+    cardStudentId = withCode.studentId;
+    return `${json.items.length} cartes · ${json.stats.issued} émises · ${json.stats.nfc} NFC`;
+  });
+
+  await check('Cartes', 'GET /api/cards/:studentId', async () => {
+    const json = await admin.ok('GET', `/api/cards/${cardStudentId}`);
+    expect(json.card?.cardCode, 'carte sans code');
+    expect(json.card.scanPath?.includes(json.card.cardCode), 'lien de pointage incohérent');
+    return `${json.card.firstName} ${json.card.lastName} · ${json.card.cardCode}`;
+  });
+
+  await check('Cartes', 'POST /api/cards/scan (QR) signe la présence', async () => {
+    const json = await admin.ok('POST', '/api/cards/scan', { code: cardCode, source: 'qr' });
+    expect(json.card?.studentId === cardStudentId, 'mauvais élève résolu');
+    expect(json.attendance?.status === 'present', 'présence non enregistrée');
+    return `${json.card.firstName} ${json.card.lastName} · ${json.alreadyMarked ? 'déjà pointé' : 'pointé'}`;
+  });
+
+  await check('Cartes', 'POST /api/cards/scan (URL de badge NFC)', async () => {
+    const url = `https://school-net-academy.vercel.app/app/presences?scan=${cardCode}`;
+    const json = await admin.ok('POST', '/api/cards/scan', { code: url, source: 'nfc' });
+    expect(json.card?.studentId === cardStudentId, 'URL de badge non reconnue');
+    return `résolu via ${new URL(url).pathname}`;
+  });
+
+  await check('Cartes', 'Carte inconnue → 404', async () => {
+    const res = await admin.post('/api/cards/scan', { code: 'SNA-26-INTROUVABLE' });
+    expect(res.status === 404, `statut ${res.status}`);
+  });
+
+  await check('Cartes', 'POST /api/cards/:id/sign', async () => {
+    const json = await admin.ok('POST', `/api/cards/${cardStudentId}/sign`, { status: 'retard' });
+    expect(json.attendance?.status === 'retard', 'statut non appliqué');
+    return json.alreadyMarked ? 'mise à jour' : 'création';
+  });
+
+  await check('Cartes', 'PATCH nfc + réémission', async () => {
+    const tag = `04:AUDIT:${Date.now().toString().slice(-6)}`;
+    const linked = await admin.ok('PATCH', `/api/cards/${cardStudentId}/nfc`, { nfcTag: tag });
+    expect(linked.card.nfcTag === tag, 'badge non associé');
+    const rescanned = await admin.ok('POST', '/api/cards/scan', { code: tag, source: 'nfc' });
+    expect(rescanned.card.studentId === cardStudentId, 'le badge NFC ne résout pas l’élève');
+    const issued = await admin.ok('POST', `/api/cards/${cardStudentId}/issue`);
+    expect(issued.card.cardCode && issued.card.cardCode !== cardCode, 'nouveau code identique');
+    cardCode = issued.card.cardCode;
+    await admin.ok('PATCH', `/api/cards/${cardStudentId}/nfc`, { nfcTag: null });
+    return `badge ${tag} · nouvelle carte ${cardCode}`;
+  });
+
+  await check('Cartes', 'Parent interdit sur les cartes → 403', async () => {
+    if (!parent) throw new Error('compte parent indisponible');
+    const res = await parent.get('/api/cards');
+    expect(res.status === 403, `statut ${res.status}`);
+  });
+
   // ─── Erreurs & robustesse ────────────────────────────────────────────────
   await check('Robustesse', 'Route API inconnue → 404 JSON', async () => {
     const res = await admin.get('/api/inconnue');

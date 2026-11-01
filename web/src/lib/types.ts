@@ -356,3 +356,56 @@ export interface AttendanceRecord {
   status: 'present' | 'absent' | 'retard' | 'excuse';
   note?: string | null;
 }
+
+/* ------------------------- Cartes scolaires / pointage ------------------------- */
+
+export interface SchoolCard {
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  matricule: string;
+  gender: 'F' | 'M';
+  birthDate?: string | null;
+  status: StudentStatus;
+  studentType?: 'eleve' | 'etudiant' | null;
+  academicLevel?: string | null;
+  cardCode: string | null;
+  nfcTag: string | null;
+  issuedAt: string | null;
+  guardianName?: string | null;
+  guardianPhone?: string | null;
+  classId?: string | null;
+  className?: string | null;
+  level?: string | null;
+  programId?: string | null;
+  programName?: string | null;
+  age?: number | null;
+  schoolName: string;
+  schoolShort: string;
+  city: string;
+  schoolYear: string;
+  validUntil: string;
+  scanPath: string | null;
+}
+
+export interface CardAttendance {
+  id: string;
+  date: string;
+  session: string | null;
+  status: 'present' | 'absent' | 'retard' | 'excuse';
+  note?: string | null;
+  createdAt: string;
+}
+
+export interface CardsResponse {
+  items: SchoolCard[];
+  date: string;
+  stats: { total: number; issued: number; missing: number; nfc: number; scansToday: number };
+}
+
+export interface CardScanResult {
+  card: SchoolCard;
+  attendance: CardAttendance | null;
+  alreadyMarked: boolean;
+  previousStatus?: string | null;
+}

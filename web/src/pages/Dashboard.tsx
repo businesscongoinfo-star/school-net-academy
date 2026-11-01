@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   ArrowRight, ArrowUpRight, Award, BookOpen, CalendarClock, ClipboardList, GraduationCap,
   Megaphone, TrendingDown, TrendingUp, UserPlus, Users, Wallet, AlertTriangle, School, Bell,
-  Building2, Layers, Library, UserCheck, Clock,
+  Building2, Layers, Library, UserCheck, Clock, CreditCard,
 } from 'lucide-react';
 import { get } from '../lib/api';
 import type { DashboardData, Student } from '../lib/types';
@@ -158,6 +158,25 @@ export function Dashboard() {
         )}
 
   
+      {role === 'teacher' && (
+          <>
+            <StatCard label="Élèves suivis" icon={Users} loading={isLoading} value={formatNumber(kpis?.students)} foot={<span>Sur l'ensemble des classes</span>} />
+            <StatCard label="Classes" icon={School} tone="info" loading={isLoading} value={formatNumber(kpis?.classes)} foot={<span>{kpis?.teachers ?? 0} enseignants actifs</span>} />
+            <StatCard label="Cours publiés" icon={BookOpen} tone="amber" loading={isLoading} value={formatNumber(kpis?.courses)} foot={<span>Plateforme en ligne</span>} />
+            <StatCard label="Moyenne générale" icon={Award} tone="violet" loading={isLoading} value={`${formatAverage(kpis?.average)}/20`} foot={<Badge tone={appreciationOf(kpis?.average ?? null).tone}>{appreciationOf(kpis?.average ?? null).label}</Badge>} />
+          </>
+        )}
+
+        {isParent && (
+          <>
+            <StatCard label="Mes enfants" icon={Users} loading={isLoading} value={formatNumber(totalStudents)} foot={<span>Inscrits cette année</span>} />
+            <StatCard label="Moyenne" icon={Award} tone="violet" loading={isLoading} value={`${formatAverage(childrenAverage)}/20`} foot={<Badge tone={appreciationOf(childrenAverage).tone}>{appreciationOf(childrenAverage).label}</Badge>} />
+            <StatCard label="Solde restant" icon={Wallet} tone="danger" loading={isLoading} value={formatMoney((kpis?.pending ?? 0) + (kpis?.late ?? 0), true)} foot={<span>Échéances à venir</span>} />
+            <StatCard label="Prochaine échéance" icon={CalendarClock} tone="amber" loading={isLoading} value={nextDue ? formatDate(nextDue.dueDate) : 'Aucune'} foot={<span>{nextDue ? formatMoney(nextDue.amount) : 'Tout est réglé'}</span>} />
+          </>
+        )}
+      </div>
+
       {role !== 'parent' && data && (
         <div className="mt-16">
           <Card>
@@ -210,6 +229,7 @@ export function Dashboard() {
                 <Link to="/app/unites"><Button size="sm" variant="secondary" icon={Layers}>Unités d'enseignement</Button></Link>
                 <Link to="/app/emploi-du-temps"><Button size="sm" variant="secondary" icon={CalendarClock}>Emploi du temps</Button></Link>
                 <Link to="/app/presences"><Button size="sm" variant="secondary" icon={UserCheck}>Présences</Button></Link>
+                <Link to="/app/cartes"><Button size="sm" variant="secondary" icon={CreditCard}>Cartes scolaires</Button></Link>
                 {role === 'admin' && (
                   <Link to="/app/bibliotheque"><Button size="sm" variant="secondary" icon={Library}>Bibliothèque</Button></Link>
                 )}
@@ -286,24 +306,6 @@ export function Dashboard() {
         </div>
       )}
 
-      {role === 'teacher' && (
-          <>
-            <StatCard label="Élèves suivis" icon={Users} loading={isLoading} value={formatNumber(kpis?.students)} foot={<span>Sur l'ensemble des classes</span>} />
-            <StatCard label="Classes" icon={School} tone="info" loading={isLoading} value={formatNumber(kpis?.classes)} foot={<span>{kpis?.teachers ?? 0} enseignants actifs</span>} />
-            <StatCard label="Cours publiés" icon={BookOpen} tone="amber" loading={isLoading} value={formatNumber(kpis?.courses)} foot={<span>Plateforme en ligne</span>} />
-            <StatCard label="Moyenne générale" icon={Award} tone="violet" loading={isLoading} value={`${formatAverage(kpis?.average)}/20`} foot={<Badge tone={appreciationOf(kpis?.average ?? null).tone}>{appreciationOf(kpis?.average ?? null).label}</Badge>} />
-          </>
-        )}
-
-        {isParent && (
-          <>
-            <StatCard label="Mes enfants" icon={Users} loading={isLoading} value={formatNumber(totalStudents)} foot={<span>Inscrits cette année</span>} />
-            <StatCard label="Moyenne" icon={Award} tone="violet" loading={isLoading} value={`${formatAverage(childrenAverage)}/20`} foot={<Badge tone={appreciationOf(childrenAverage).tone}>{appreciationOf(childrenAverage).label}</Badge>} />
-            <StatCard label="Solde restant" icon={Wallet} tone="danger" loading={isLoading} value={formatMoney((kpis?.pending ?? 0) + (kpis?.late ?? 0), true)} foot={<span>Échéances à venir</span>} />
-            <StatCard label="Prochaine échéance" icon={CalendarClock} tone="amber" loading={isLoading} value={nextDue ? formatDate(nextDue.dueDate) : 'Aucune'} foot={<span>{nextDue ? formatMoney(nextDue.amount) : 'Tout est réglé'}</span>} />
-          </>
-        )}
-      </div>
 
       {isParent && (
         <div className="mt-16">
@@ -567,6 +569,7 @@ export function Dashboard() {
                 <Link to="/app/unites"><Button size="sm" variant="secondary" icon={Layers}>Unités d'enseignement</Button></Link>
                 <Link to="/app/emploi-du-temps"><Button size="sm" variant="secondary" icon={CalendarClock}>Emploi du temps</Button></Link>
                 <Link to="/app/presences"><Button size="sm" variant="secondary" icon={UserCheck}>Présences</Button></Link>
+                <Link to="/app/cartes"><Button size="sm" variant="secondary" icon={CreditCard}>Cartes scolaires</Button></Link>
                 {role === 'admin' && (
                   <Link to="/app/bibliotheque"><Button size="sm" variant="secondary" icon={Library}>Bibliothèque</Button></Link>
                 )}

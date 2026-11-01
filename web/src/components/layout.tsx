@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, GraduationCap, School, ClipboardList, Wallet, BookOpen,
   Megaphone, Award, Settings, Menu, X, LogOut, ChevronDown, LifeBuoy, Bell, UserRound,
-  Building2, Layers, CalendarDays, Library, UserCheck,
+  Building2, Layers, CalendarDays, Library, UserCheck, CreditCard,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAuth } from '../lib/auth';
@@ -33,6 +33,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
       { to: '/app/classes', label: 'Classes', icon: School, roles: ['admin', 'teacher'] },
       { to: '/app/enseignants', label: 'Enseignants', icon: GraduationCap, roles: ['admin'] },
       { to: '/app/presences', label: 'Présences', icon: UserCheck, roles: ['admin', 'teacher'] },
+      { to: '/app/cartes', label: 'Cartes scolaires', icon: CreditCard, roles: ['admin', 'teacher'] },
     ],
   },
   {

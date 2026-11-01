@@ -53,6 +53,7 @@ const pages = {
   Timetable: '/src/pages/Timetable.tsx',
   Library: '/src/pages/Library.tsx',
   Attendance: '/src/pages/Attendance.tsx',
+  Cards: '/src/pages/Cards.tsx',
   NotFound: '/src/pages/NotFound.tsx',
 };
 
@@ -124,6 +125,7 @@ const routes = {
   Timetable: '/app/emploi-du-temps',
   Library: '/app/bibliotheque',
   Attendance: '/app/presences',
+  Cards: '/app/cartes',
   Login: '/connexion',
   Landing: '/',
   NotFound: '/nope',
@@ -146,6 +148,7 @@ const EXPECTATIONS = {
   Units: ['Unités'],
   Timetable: ['Emploi du temps'],
   Library: ['Bibliothèque', 'Exporter'],
+  Cards: ['Cartes scolaires', 'Pointer par carte'],
   Attendance: ['Présences', 'Exporter'],
   Login: ['Se connecter'],
   Landing: ['School Net'],

@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, ReactNode, Ref, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
 import { clsx } from 'clsx';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -50,7 +50,7 @@ export function IconButton({ icon: Icon, label, size = 16, tone = 'default', cla
 
 /* --------------------------------- Inputs -------------------------------- */
 
-export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
+export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputElement> & { ref?: Ref<HTMLInputElement> }) {
   return <input className={clsx('input', className)} {...rest} />;
 }
 

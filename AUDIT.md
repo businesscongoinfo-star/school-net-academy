@@ -1,6 +1,6 @@
 # Rapport d'analyse & de finition — School Net Academy
 
-**Date :** 1er novembre 2026 · **Commit audité :** `622d148` · **Production :** <https://school-net-academy.vercel.app>
+**Date :** 1er novembre 2026 · **Commit audité :** `77901b0` (module cartes : voir § 0 bis) · **Production :** <https://school-net-academy.vercel.app>
 
 Ce document trace la recette complète de la plateforme : ce qui a été vérifié, ce qui a été
 corrigé, ce qui a été ajouté, et ce qui reste volontairement hors périmètre.
@@ -50,14 +50,40 @@ d'un élève créé plus tôt échouent en cascade.
 
 ---
 
+## 0 bis. Cartes scolaires & affichage du tableau de bord (novembre 2026)
+
+**Affichage corrigé.** Sur le tableau de bord, la carte « Université & vie scolaire » et la
+double carte « Séances / Vie scolaire » étaient **imbriquées dans la grille des 4 KPI**
+(`grid-4`). Elles devenaient donc des colonnes de 250 px, ce qui écrasait les chiffres et
+chevauchait les blocs. Elles sont désormais des sœurs de la grille : KPI sur 4 colonnes,
+puis les blocs pleine largeur.
+
+**Nouveau module — cartes d'identité scolaires :**
+
+| Élément | Détail |
+| --- | --- |
+| Émission | Automatique à la création de l'élève (`card_code` unique `SNA-26-XXXXXX`), plus réémission à la demande |
+| Visuel | Carte au format 85,6 × 54 mm : logo, photo (initiales), nom, classe/filière, matricule, date de naissance, validité |
+| QR code | `qrcode.react`, valeur = URL de pointage (`/app/presences?scan=CODE`) donc lisible par n'importe quel téléphone |
+| Code-barres | Code 128 (`jsbarcode`), compatible douchettes USB/Bluetooth |
+| NFC | Web NFC : programmation d'un badge (NDEF URL) ou association d'un support existant ; lecture par identifiant de série |
+| Pointage | `POST /api/cards/scan` (code, tag NFC, matricule ou URL) → présence du jour, détection du doublon, statut présent/retard |
+| Impression | Feuille de style dédiée (`body.printing-card`) : seule la carte est imprimée |
+| Sécurité | Réservé aux rôles direction/enseignant ; le parent reçoit 403 |
+
+Vérifications ajoutées à l'audit (8) : liste, détail, scan QR, scan URL de badge, carte inconnue,
+signature manuelle, association NFC + réémission, contrôle d'accès parent → **95/95**.
+
+---
+
 ## 1. Méthode
 
 | Étape | Outil | Résultat |
 | --- | --- | --- |
 | Typage de l'interface | `npm run typecheck` (TypeScript strict) | ✅ 0 erreur |
 | Compilation production | `npm run build` (Vite) | ✅ 1,1 s |
-| Rendu de toutes les pages | `node scripts/smoke.mjs` | ✅ 19/19 pages, avec contrôle du contenu attendu |
-| Recette fonctionnelle de l'API | `npm run audit` | ✅ **87/87 vérifications** |
+| Rendu de toutes les pages | `node scripts/smoke.mjs` | ✅ 20/20 pages, avec contrôle du contenu attendu |
+| Recette fonctionnelle de l'API | `npm run audit` | ✅ **95/95 vérifications** |
 | API simulée de la démo statique | `node scripts/test-demo-mock.mjs` | ✅ 35 routes |
 | Déploiement serverless | Vercel (production) | ✅ `READY` / `PROMOTED` |
 

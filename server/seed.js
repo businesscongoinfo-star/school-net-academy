@@ -581,7 +581,7 @@ export function seed() {
         pick(SESSIONS), status, status === 'excuse' ? 'Justificatif remis au secrétariat.' : null, stamp, stamp,
       );
     });
-    uniStudents.slice(0, 16).forEach((student) => {
+  uniStudents.slice(0, 16).forEach((student) => {
       if (!chance(0.2)) return;
       const roll = rand();
       const status = roll < 0.78 ? 'present' : roll < 0.9 ? 'absent' : 'retard';
@@ -591,6 +591,25 @@ export function seed() {
       );
     });
   }
+
+  /* --- Cartes scolaires (QR + code-barres + badge NFC) --- */
+  const CARD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const usedCards = new Set();
+  const cardCode = () => {
+    let code = '';
+    do {
+      let suffix = '';
+      for (let i = 0; i < 6; i += 1) suffix += CARD_ALPHABET[int(0, CARD_ALPHABET.length - 1)];
+      code = `SNA-${String(TODAY.getUTCFullYear()).slice(2)}-${suffix}`;
+    } while (usedCards.has(code));
+    usedCards.add(code);
+    return code;
+  };
+  const badge = (n) => `04:${pad2(11 + (n % 5))}:${pad2(20 + (n % 40))}:${pad2(30 + (n % 60))}:${pad2(n % 90)}:${pad2((n * 7) % 90)}`;
+  const setCard = db.prepare('UPDATE students SET card_code = ?, card_issued_at = ?, nfc_tag = ?, updated_at = ? WHERE id = ?');
+  [...students, ...uniStudents].forEach((student, index) => {
+    setCard.run(cardCode(), stamp, index < 12 ? badge(index) : null, stamp, student.id);
+  });
 
   return {
     users: users.length + 0,
