@@ -144,61 +144,6 @@ app.get('/api/diagnostics', (req, res) => {
  * l'intégralité de la réponse (statut, en-têtes, corps). Sert à diagnostiquer
  * un incident réseau ou serverless en production.
  */
-app.get('/api/diagnostics/page', (req, res) => {
-  res.setHeader('Cache-Control', 'no-store');
-  res.type('html').send(`<!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><title>Diagnostic</title>
-<style>
- body{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#0b1418;color:#d7e6e3;padding:22px;font-size:13px;line-height:1.55}
- h1{font-size:15px;letter-spacing:.04em;text-transform:uppercase;color:#5eead4;margin:0 0 14px}
- b{color:#fff}
- .ok{color:#5eead4}.ko{color:#ff8b7d}
- pre{white-space:pre-wrap;word-break:break-word;background:#111e22;border:1px solid #1e343a;border-radius:8px;padding:10px;margin:6px 0 16px}
-</style></head>
-<body>
-<h1>Diagnostic School Net Academy</h1>
-<div id="out">Exécution des tests…</div>
-<script>
-const out = document.getElementById('out');
-const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
-const results = [];
-async function probe(label, url, method, body) {
-  const started = performance.now();
-  try {
-    const res = await fetch(url, {
-      method: method || 'GET',
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-      credentials: 'same-origin',
-    });
-    const text = (await res.text()).slice(0, 320);
-    return { label, url, status: res.status, contentType: res.headers.get('content-type'), ms: Math.round(performance.now() - started), text };
-  } catch (error) {
-    return { label, url, status: 0, error: String(error), ms: Math.round(performance.now() - started) };
-  }
-}
-(async () => {
-  const b = location.origin;
-  results.push(await probe('GET /api/health', b + '/api/health?cb=' + Date.now()));
-  results.push(await probe('GET /api/auth/me (anonyme)', b + '/api/auth/me?cb=' + Date.now()));
-  results.push(await probe('POST /api/auth/login', b + '/api/auth/login', 'POST', { email: 'direction@schoolnet.academy', password: 'demo1234' }));
-  results.push(await probe('GET /api/auth/me (connecté)', b + '/api/auth/me?cb=' + Date.now()));
-  results.push(await probe('GET /api/dashboard', b + '/api/dashboard?cb=' + Date.now()));
-  results.push(await probe('GET /api/students', b + '/api/students?search=a&cb=' + Date.now()));
-  results.push(await probe('GET /api/university/faculties', b + '/api/faculties?cb=' + Date.now()));
-  out.innerHTML = results.map((r) => {
-    const ok = r.status >= 200 && r.status < 300;
-    return '<p><b>' + esc(r.label) + '</b> <span class="' + (ok ? 'ok' : 'ko') + '">' + (r.status || 'réseau') + '</span>'
-      + ' — ' + r.ms + ' ms — ' + esc(r.contentType || 'sans content-type') + '</p>'
-      + '<pre>' + esc(r.error || r.text || '(vide)') + '</pre>';
-  }).join('');
-  const summary = results.map((r) => r.status || 'X').join(',');
-  document.title = 'diag ' + summary;
-})();
-</script>
-</body></html>`);
-});
-
 /** Le navigateur signale ici les réponses anormales (statut et message),
  *  ce qui permet de diagnostiquer un incident en production. */
 app.get('/api/diagnostics/report', (req, res) => {
