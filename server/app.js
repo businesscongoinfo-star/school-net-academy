@@ -51,12 +51,16 @@ app.disable('x-powered-by');
  * quel que soit le nombre de segments (ex. /api/auth/login, /api/grades/results).
  */
 app.use((req, res, next) => {
-  const encoded = req.query?.__p;
-  if (typeof encoded === 'string' && encoded) {
-    const query = new URLSearchParams(req.query);
-    query.delete('__p');
-    const search = query.toString();
-    req.url = `/api/${encoded.replace(/^\/+/, '')}${search ? `?${search}` : ''}`;
+  const raw = String(req.url ?? '');
+  const [, rawQuery = ''] = raw.split('?');
+  if (rawQuery) {
+    const params = new URLSearchParams(rawQuery);
+    const encoded = params.get('__p');
+    if (encoded) {
+      params.delete('__p');
+      const search = params.toString();
+      req.url = `/api/${encoded.replace(/^\/+/, '')}${search ? `?${search}` : ''}`;
+    }
   }
   next();
 });
@@ -240,7 +244,11 @@ app.get('/api/activity', requireAuth, (req, res) => {
 });
 
 app.use('/api', (req, res) => {
-  res.status(404).json({ error: 'Endpoint introuvable.' });
+  res.status(404).json({
+    error: 'Endpoint introuvable.',
+    receivedUrl: req.url,
+    originalUrl: req.originalUrl,
+  });
 });
 
 /* --------------------------- Frontend -------------------------- */
