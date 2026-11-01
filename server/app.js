@@ -160,37 +160,40 @@ app.get('/api/diagnostics/page', (req, res) => {
 <div id="out">Exécution des tests…</div>
 <script>
 const out = document.getElementById('out');
-const fail = (m) => { document.title = 'ERREUR ' + m; out.innerHTML = '<p class="ko">ERREUR : ' + m + '</p>'; };
-async function probe(label, url, body) {
+const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+const results = [];
+async function probe(label, url, method, body) {
   const started = performance.now();
   try {
     const res = await fetch(url, {
-      method: 'POST',
+      method: method || 'GET',
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
       credentials: 'same-origin',
     });
-    const text = (await res.text()).slice(0, 400);
-    const ms = Math.round(performance.now() - started);
-    return { label, url, status: res.status, contentType: res.headers.get('content-type'), ms, text };
+    const text = (await res.text()).slice(0, 320);
+    return { label, url, status: res.status, contentType: res.headers.get('content-type'), ms: Math.round(performance.now() - started), text };
   } catch (error) {
     return { label, url, status: 0, error: String(error), ms: Math.round(performance.now() - started) };
   }
 }
 (async () => {
-  const results = [];
-  results.push(await probe('GET health', '/api/health'));
-  results.push(await probe('POST echo', '/api/diagnostics/echo', { ping: true }));
-  results.push(await probe('POST login', '/api/auth/login', { email: 'direction@schoolnet.academy', password: 'demo1234' }));
-  const html = results.map((r) => {
-    const cls = r.status >= 200 && r.status < 300 ? 'ok' : 'ko';
-    return '<p><b>' + r.label + '</b> <span class="' + cls + '">' + (r.status || 'réseau') + '</span>'
-      + ' — ' + r.ms + ' ms — ' + (r.contentType || 'sans content-type') + '</p>'
-      + '<pre>' + (r.error || r.text || '(vide)').replace(/[<>&]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) + '</pre>';
+  const b = location.origin;
+  results.push(await probe('GET /api/health', b + '/api/health?cb=' + Date.now()));
+  results.push(await probe('GET /api/auth/me (anonyme)', b + '/api/auth/me?cb=' + Date.now()));
+  results.push(await probe('POST /api/auth/login', b + '/api/auth/login', 'POST', { email: 'direction@schoolnet.academy', password: 'demo1234' }));
+  results.push(await probe('GET /api/auth/me (connecté)', b + '/api/auth/me?cb=' + Date.now()));
+  results.push(await probe('GET /api/dashboard', b + '/api/dashboard?cb=' + Date.now()));
+  results.push(await probe('GET /api/students', b + '/api/students?search=a&cb=' + Date.now()));
+  results.push(await probe('GET /api/university/faculties', b + '/api/faculties?cb=' + Date.now()));
+  out.innerHTML = results.map((r) => {
+    const ok = r.status >= 200 && r.status < 300;
+    return '<p><b>' + esc(r.label) + '</b> <span class="' + (ok ? 'ok' : 'ko') + '">' + (r.status || 'réseau') + '</span>'
+      + ' — ' + r.ms + ' ms — ' + esc(r.contentType || 'sans content-type') + '</p>'
+      + '<pre>' + esc(r.error || r.text || '(vide)') + '</pre>';
   }).join('');
-  out.innerHTML = html;
-  const login = results[2];
-  document.title = 'diag login=' + (login.status || 'reseau');
+  const summary = results.map((r) => r.status || 'X').join(',');
+  document.title = 'diag ' + summary;
 })();
 </script>
 </body></html>`);
