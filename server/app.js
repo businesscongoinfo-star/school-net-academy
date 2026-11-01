@@ -108,6 +108,64 @@ app.get('/api/diagnostics', (req, res) => {
   });
 });
 
+/**
+ * Page de test auto-exécutée (HTML brut, hors SPA) : rejoue depuis un vrai
+ * navigateur un POST technique puis un POST de connexion, et affiche
+ * l'intégralité de la réponse (statut, en-têtes, corps). Sert à diagnostiquer
+ * un incident réseau ou serverless en production.
+ */
+app.get('/api/diagnostics/page', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.type('html').send(`<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Diagnostic</title>
+<style>
+ body{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#0b1418;color:#d7e6e3;padding:22px;font-size:13px;line-height:1.55}
+ h1{font-size:15px;letter-spacing:.04em;text-transform:uppercase;color:#5eead4;margin:0 0 14px}
+ b{color:#fff}
+ .ok{color:#5eead4}.ko{color:#ff8b7d}
+ pre{white-space:pre-wrap;word-break:break-word;background:#111e22;border:1px solid #1e343a;border-radius:8px;padding:10px;margin:6px 0 16px}
+</style></head>
+<body>
+<h1>Diagnostic School Net Academy</h1>
+<div id="out">Exécution des tests…</div>
+<script>
+const out = document.getElementById('out');
+const fail = (m) => { document.title = 'ERREUR ' + m; out.innerHTML = '<p class="ko">ERREUR : ' + m + '</p>'; };
+async function probe(label, url, body) {
+  const started = performance.now();
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: 'same-origin',
+    });
+    const text = (await res.text()).slice(0, 400);
+    const ms = Math.round(performance.now() - started);
+    return { label, url, status: res.status, contentType: res.headers.get('content-type'), ms, text };
+  } catch (error) {
+    return { label, url, status: 0, error: String(error), ms: Math.round(performance.now() - started) };
+  }
+}
+(async () => {
+  const results = [];
+  results.push(await probe('GET health', '/api/health'));
+  results.push(await probe('POST echo', '/api/diagnostics/echo', { ping: true }));
+  results.push(await probe('POST login', '/api/auth/login', { email: 'direction@schoolnet.academy', password: 'demo1234' }));
+  const html = results.map((r) => {
+    const cls = r.status >= 200 && r.status < 300 ? 'ok' : 'ko';
+    return '<p><b>' + r.label + '</b> <span class="' + cls + '">' + (r.status || 'réseau') + '</span>'
+      + ' — ' + r.ms + ' ms — ' + (r.contentType || 'sans content-type') + '</p>'
+      + '<pre>' + (r.error || r.text || '(vide)').replace(/[<>&]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) + '</pre>';
+  }).join('');
+  out.innerHTML = html;
+  const login = results[2];
+  document.title = 'diag login=' + (login.status || 'reseau');
+})();
+</script>
+</body></html>`);
+});
+
 /** Le navigateur signale ici les réponses anormales (statut et message),
  *  ce qui permet de diagnostiquer un incident en production. */
 app.get('/api/diagnostics/report', (req, res) => {
