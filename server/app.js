@@ -43,6 +43,24 @@ if (isEmpty() || process.env.SEED === 'force') {
 
 const app = express();
 app.disable('x-powered-by');
+
+/**
+ * Routage Vercel : la fonction serverless vit sur `/api` (un seul segment).
+ * `vercel.json` réécrit `/api/<chemin>` en `/api?__p=<chemin>` ; on reconstitue
+ * ici l'URL d'origine pour que les routeurs Express fonctionnent normalement,
+ * quel que soit le nombre de segments (ex. /api/auth/login, /api/grades/results).
+ */
+app.use((req, res, next) => {
+  const encoded = req.query?.__p;
+  if (typeof encoded === 'string' && encoded) {
+    const query = new URLSearchParams(req.query);
+    query.delete('__p');
+    const search = query.toString();
+    req.url = `/api/${encoded.replace(/^\/+/, '')}${search ? `?${search}` : ''}`;
+  }
+  next();
+});
+
 app.use(express.json({ limit: '1mb' }));
 
 app.use((req, res, next) => {
@@ -95,6 +113,11 @@ app.get('/api/diagnostics', (req, res) => {
 
   res.status(ok ? 200 : 500).json({
     ok,
+    routing: {
+      url: req.url,
+      originalUrl: req.originalUrl,
+      query: req.query,
+    },
     runtime: {
       node: process.version,
       platform: process.env.VERCEL ? 'vercel' : 'node',
