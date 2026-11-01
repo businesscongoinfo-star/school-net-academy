@@ -60,6 +60,9 @@ app.use((req, res, next) => {
       params.delete('__p');
       const search = params.toString();
       req.url = `/api/${encoded.replace(/^\/+/, '')}${search ? `?${search}` : ''}`;
+      // Express/parseurl met en cache l'URL analysée : on l'invalide pour que
+      // le routage utilise bien le chemin reconstitué.
+      req._parsedUrl = undefined;
     }
   }
   next();
@@ -248,6 +251,7 @@ app.use('/api', (req, res) => {
     error: 'Endpoint introuvable.',
     receivedUrl: req.url,
     originalUrl: req.originalUrl,
+    expressPath: req.path,
   });
 });
 
