@@ -242,8 +242,9 @@ docker build -t school-net-academy .
 docker run -p 3000:3000 -v $(pwd)/data:/data school-net-academy
 ```
 
-Railway détecte le `Dockerfile` automatiquement ; sur Fly.io : `fly launch` puis
-`fly volumes create data --size 1` et montez le volume sur `/data`.
+Railway détecte le `Dockerfile` automatiquement (un `Procfile` `web: npm start` est aussi fourni
+pour Scalingo/Heroku) ; sur Fly.io : `fly launch` puis `fly volumes create data --size 1` et montez
+le volume sur `/data`.
 
 ### Serveur classique
 

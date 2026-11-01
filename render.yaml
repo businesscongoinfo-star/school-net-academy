@@ -20,8 +20,8 @@ services:
       # redéploiement/redémarrage. Pour conserver les données, passez sur un plan payant et
       # décommentez le bloc « disk » ci-dessous.
       - key: DB_FILE
-        value: /opt/render/project/src/data/school-net.db
+        value: data/school-net.db
     # disk:
     #   name: school-net-data
-    #   mountPath: /opt/render/project/src/data
+    #   mountPath: /opt/render/project/src/data   # = chemin de DB_FILE
     #   sizeGB: 1
