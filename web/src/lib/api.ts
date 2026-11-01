@@ -25,6 +25,21 @@ export function onUnauthorized(listener: (status: number) => void) {
 
 const DEMO = import.meta.env.VITE_DEMO === '1';
 
+/**
+ * Signale au serveur (en GET, donc toujours disponible) une réponse anormale :
+ * cela permet de diagnostiquer un incident sans accès aux outils du navigateur.
+ */
+function reportFailure(method: string, path: string, status: number, detail: string) {
+  if (DEMO) return;
+  try {
+    const params = new URLSearchParams({
+      path, method, status: String(status), detail: detail.slice(0, 300),
+    });
+    fetch(`/api/diagnostics/report?${params.toString()}`, { cache: 'no-store', keepalive: true })
+      .catch(() => undefined);
+  } catch { /* le diagnostic ne doit jamais casser l'application */ }
+}
+
 export async function api<T>(path: string, options: Options = {}): Promise<T> {
   const { method = 'GET', body, signal } = options;
 
@@ -52,7 +67,15 @@ export async function api<T>(path: string, options: Options = {}): Promise<T> {
 
   if (!res.ok) {
     if (res.status === 401) listeners.forEach((l) => l(401));
-    const message = (payload as { error?: string } | null)?.error ?? 'Une erreur est survenue.';
+    const serverError = (payload as { error?: string } | null)?.error;
+    if (!isJson) {
+      const snippet = await res.clone().text().catch(() => '');
+      reportFailure(method, path, res.status, snippet.slice(0, 200));
+    }
+    const message = serverError
+      ?? (isJson
+        ? 'Une erreur est survenue.'
+        : `Réponse inattendue du serveur (${res.status}). Réessayez dans un instant.`);
     throw new ApiError(message, res.status, (payload as { details?: unknown } | null)?.details);
   }
   return payload as T;
