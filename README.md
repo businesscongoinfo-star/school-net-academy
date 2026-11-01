@@ -286,13 +286,27 @@ DB_FILE=/var/lib/school-net/school-net.db PORT=3000 npm start
 Variables d'environnement utiles : `PORT`, `DB_FILE` (chemin de la base), `SEED=force`
 (régénère les données de démonstration au démarrage).
 
-### Vercel
+### Vercel — déployé en production
 
-Vercel ne convient **pas en l'état** : le projet attend un serveur Node persistant et une base
-SQLite sur disque. Une mise en ligne statique de `web/dist` renvoie une page non stylée (c'est le
-symptôme d'un ancien déploiement Vercel). Pour rester sur Vercel il faudrait convertir les routes
-`/api/*` en *serverless functions* et migrer la base vers un service externe (Turso/libSQL, Neon,
-Postgres) — adaptation non incluse ici.
+L'application tourne sur Vercel en **serverless** : <https://school-net-academy.vercel.app>
+
+- `vercel.json` : `npm ci` → `npm run build` (Vite) → sortie `web/dist`, rewrite SPA vers
+  `index.html` (les routes `/app/...` fonctionnent au rechargement).
+- `api/[...path].js` (+ `api/index.js`) : toute requête `/api/*` est traitée par l'application
+  Express exportée depuis `server/app.js` (le même code que le serveur Node, sans `listen`).
+- **Sessions sans état** : sur Vercel, `SESSION_MODE=stateless` signe le cookie avec
+  `SESSION_SECRET` (HMAC-SHA256). Le jeton est donc valide sur toutes les instances, même si
+  chacune recrée sa base SQLite.
+- Variables d'environnement du projet : `SESSION_MODE=stateless`, `SESSION_SECRET` (secret),
+  `DB_FILE=/tmp/school-net.db`.
+- Redéploiement : `git push` sur la branche, ou depuis le tableau de bord Vercel.
+
+**Limite connue** : le système de fichiers serverless est éphémère et propre à chaque instance.
+La base SQLite est donc recréée (et remplie avec les données de démonstration) à chaque démarrage
+à froid, et les écritures peuvent ne pas être conservées d'une instance à l'autre. Pour une
+persistance réelle en production, brancher une base managée (Turso/libSQL, Neon/Postgres, Supabase)
+via la même couche `server/db.js`, ou déployer sur un serveur Node avec volume (`render.yaml`,
+`Dockerfile` fournis).
 
 ## Sécurité
 
