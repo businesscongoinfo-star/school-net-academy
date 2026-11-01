@@ -7,6 +7,49 @@ corrigé, ce qui a été ajouté, et ce qui reste volontairement hors périmètr
 
 ---
 
+## 0. Incident de production du 1er novembre 2026 (connexion impossible)
+
+**Symptôme** : sur <https://school-net-academy.vercel.app/connexion>, la connexion échouait avec
+« Une erreur est survenue. » — quelle que soit la saisie, y compris avec les comptes de démonstration.
+
+**Cause racine** : la plateforme Vercel n'acheminait pas les chemins d'API imbriqués vers la
+fonction serverless. Le projet déclarait `api/[...path].js` en plus de `api/index.js`, mais les
+fichiers « catch-all » ne sont pas reconnus par un projet Vercel hors Next.js : `/api/auth/login`,
+`/api/auth/me`, `/api/grades/results`… renvoyaient la page **404 HTML de Vercel**. Le front, qui
+attend du JSON, affichait donc le message d'erreur générique. Aucune requête n'atteignait Express,
+ce qui explique que le serveur local fonctionnait parfaitement (base, mots de passe, sessions OK).
+
+**Correctif** (commits `effc67d`, `7dd23b5`, `87eb7d3`, `77901b0`) :
+
+| Élément | Avant | Après |
+| --- | --- | --- |
+| Fonctions | `api/index.js` + `api/[...path].js` | `api/index.js` uniquement |
+| Réécriture API | absente | `{ "source": "/api/(.+)", "destination": "/api?__p=$1" }` |
+| Routage Express | dépendait de Vercel | `server/app.js` reconstitue `req.url` depuis `__p` (URL brute, cache `_parsedUrl` invalidé) |
+| Réponse inconnue | 404 muet | 404 JSON détaillé (`receivedUrl`, `originalUrl`) |
+| Diagnostic | — | `GET /api/health`, `GET /api/diagnostics` (journal des 40 derniers appels) |
+
+⚠️ Piège rencontré : écrire `"^/api/(.+)$"` dans `source` produit un motif échappé littéralement
+(`^\^/api…`) et ne correspond à rien. Il faut laisser Vercel ajouter les ancres : `/api/(.+)`.
+
+**Vérification en production** (navigateur réel, via une page de test temporaire supprimée depuis) :
+
+```
+GET  /api/health ............. 200   {"ok":true}
+GET  /api/auth/me  (anonyme) .. 401   {"error":"Session expirée…"}
+POST /api/auth/login .......... 200   {user: direction@schoolnet.academy, role: admin}
+GET  /api/auth/me  (connecté) . 200   (cookie sna_session conservé)
+GET  /api/dashboard ........... 200
+GET  /api/library/books ....... 401   JSON (et non plus la page 404 de Vercel)
+```
+
+Recette locale après correctif : `npm run typecheck` ✅, `npm run build` ✅, 19/19 pages rendues,
+**87/87 vérifications d'API**. ⚠️ L'audit est un test « avec état » : il exige un serveur démarré
+sur une base fraîchement semée (`node server/seed.js --reset`), sinon les vérifications dépendant
+d'un élève créé plus tôt échouent en cascade.
+
+---
+
 ## 1. Méthode
 
 | Étape | Outil | Résultat |

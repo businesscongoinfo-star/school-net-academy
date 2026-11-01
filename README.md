@@ -303,8 +303,16 @@ L'application tourne sur Vercel en **serverless** : <https://school-net-academy.
 
 - `vercel.json` : `npm ci` → `npm run build` (Vite) → sortie `web/dist`, rewrite SPA vers
   `index.html` (les routes `/app/...` fonctionnent au rechargement).
-- `api/[...path].js` (+ `api/index.js`) : toute requête `/api/*` est traitée par l'application
-  Express exportée depuis `server/app.js` (le même code que le serveur Node, sans `listen`).
+- **Une seule fonction serverless** : `api/index.js`, montée sur `/api`. Vercel ne sait pas
+  router `/api/auth/login` vers un `api/[...path].js` (les fichiers « catch-all » ne sont pas
+  reconnus hors Next.js) : la réécriture `{ "source": "/api/(.+)", "destination": "/api?__p=$1" }`
+  amène tous les chemins imbriqués à la fonction, et `server/app.js` reconstitue l'URL d'origine
+  (`req.url`) avant les routeurs Express. Les paramètres de requête sont conservés.
+  ⚠️ Ne pas remettre d'ancres (`^…$`) dans `source` : Vercel les échappe littéralement.
+- Toute requête `/api/*` est donc traitée par l'application Express exportée depuis
+  `server/app.js` (le même code que le serveur Node, sans `listen`).
+- Diagnostic en production : `GET /api/health` (vivacité) et `GET /api/diagnostics` (base,
+  empreinte des mots de passe démo, signature de session, journal des 40 derniers appels d'API).
 - **Sessions sans état** : sur Vercel, `SESSION_MODE=stateless` signe le cookie avec
   `SESSION_SECRET` (HMAC-SHA256). Le jeton est donc valide sur toutes les instances, même si
   chacune recrée sa base SQLite.
