@@ -129,6 +129,28 @@ const routes = {
   NotFound: '/nope',
 };
 
+// Éléments fonctionnels qui doivent apparaître sur chaque page.
+const EXPECTATIONS = {
+  Dashboard: ['Tableau de bord'],
+  Students: ['Élèves', 'Exporter', 'Nouvel élève'],
+  Classes: ['Classes'],
+  Teachers: ['Enseignants', 'Exporter'],
+  Admissions: ['Inscriptions'],
+  Payments: ['Paiements', 'Exporter'],
+  Courses: ['Cours'],
+  Announcements: ['Annonces'],
+  Results: ['Résultats', 'Exporter', 'Bulletin'],
+  Settings: ['Paramètres', 'Sécurité'],
+  Faculties: ['Facultés'],
+  Programs: ['Filières'],
+  Units: ['Unités'],
+  Timetable: ['Emploi du temps'],
+  Library: ['Bibliothèque', 'Exporter'],
+  Attendance: ['Présences', 'Exporter'],
+  Login: ['Se connecter'],
+  Landing: ['School Net'],
+};
+
 let failures = 0;
 for (const [name, path] of Object.entries(pages)) {
   try {
@@ -143,9 +165,16 @@ for (const [name, path] of Object.entries(pages)) {
               React.createElement(Component, null))))),
     );
     const chars = html.length;
-    const suspicious = /undefined|NaN/.test(html.replace(/<[^>]*>/g, ''));
-    console.log(`${suspicious ? '⚠' : '✓'} ${name.padEnd(14)} ${String(chars).padStart(6)} car.${suspicious ? ' (texte suspect)' : ''}`);
-    if (!chars) failures++;
+    const text = html.replace(/<[^>]*>/g, ' ');
+    const suspicious = /undefined|NaN/.test(text);
+    const missing = (EXPECTATIONS[name] ?? []).filter((needle) => !html.includes(needle));
+    const status = !chars || missing.length ? '✗' : suspicious ? '⚠' : '✓';
+    console.log(
+      `${status} ${name.padEnd(14)} ${String(chars).padStart(6)} car.`
+      + `${suspicious ? ' (texte suspect)' : ''}`
+      + `${missing.length ? ` (manquant : ${missing.join(', ')})` : ''}`,
+    );
+    if (!chars || missing.length) failures++;
   } catch (error) {
     failures++;
     console.error(`✗ ${name}: ${error.message}`);

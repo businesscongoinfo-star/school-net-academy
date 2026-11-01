@@ -3,13 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Pencil, Trash2, Users, UserPlus, Wallet, GraduationCap, Phone, Mail, MapPin,
-  CalendarDays, FileText, ArrowRight, SearchX, Eye, Award, AlertTriangle,
+  CalendarDays, FileText, ArrowRight, SearchX, Eye, Award, AlertTriangle, Download,
 } from 'lucide-react';
 import { del, get, patch, post, qs, ApiError } from '../lib/api';
 import type { ListResponse, Meta, Student, StudentDetail } from '../lib/types';
 import { useAuth } from '../lib/auth';
 import { PAYMENT_STATUS, STUDENT_STATUS, appreciationOf, labelOf, toneOf } from '../lib/labels';
 import { ageFrom, colorFor, formatAverage, formatDate, formatMoney, relativeTime, toDateInput } from '../lib/format';
+import { datedFilename, downloadCsv } from '../lib/csv';
 import {
   Avatar, Badge, Button, Card, EmptyState, Field, IconButton, Input, PageHeader, Pagination,
   ProgressBar, ScorePill, SearchInput, Select, StatCard, TableSkeleton, Tabs, Textarea,
@@ -166,17 +167,38 @@ export function Students() {
     });
   }
 
+  function exportCsv() {
+    const count = downloadCsv(datedFilename('eleves'), filtered, [
+      { header: 'Matricule', value: (s) => s.matricule },
+      { header: 'Nom', value: (s) => s.lastName },
+      { header: 'Prénom', value: (s) => s.firstName },
+      { header: 'Sexe', value: (s) => s.gender },
+      { header: 'Naissance', value: (s) => s.birthDate ?? '' },
+      { header: 'Profil', value: (s) => (s.studentType === 'etudiant' ? 'Étudiant' : 'Élève') },
+      { header: 'Classe / Filière', value: (s) => s.className ?? s.programName ?? '' },
+      { header: 'Niveau', value: (s) => s.level ?? s.academicLevel ?? '' },
+      { header: 'Statut', value: (s) => labelOf(STUDENT_STATUS, s.status) },
+      { header: 'Tuteur', value: (s) => s.guardianName ?? '' },
+      { header: 'Téléphone tuteur', value: (s) => s.guardianPhone ?? '' },
+      { header: 'E-mail tuteur', value: (s) => s.guardianEmail ?? '' },
+      { header: 'Payé (FCFA)', value: (s) => s.paidTotal ?? 0 },
+      { header: 'Moyenne /20', value: (s) => (s.average === null || s.average === undefined ? '' : s.average) },
+    ]);
+    toast.success('Export CSV prêt', `${count} dossier(s) exporté(s).`);
+  }
+
   return (
     <>
       <PageHeader
         title={isParent ? 'Mes enfants' : 'Élèves'}
         subtitle={isParent ? 'Suivez la scolarité de vos enfants.' : 'Dossiers, affectations et situation financière des élèves.'}
-        actions={isAdmin ? (
+        actions={isParent ? undefined : (
           <>
-            <Button icon={Users} onClick={() => setSearch('')}>Tout afficher</Button>
-            <Button variant="primary" icon={Plus} onClick={openCreate}>Nouvel élève</Button>
+            <Button icon={Download} onClick={exportCsv} disabled={!filtered.length}>Exporter</Button>
+            {isAdmin && <Button icon={Users} onClick={() => setSearch('')}>Tout afficher</Button>}
+            {isAdmin && <Button variant="primary" icon={Plus} onClick={openCreate}>Nouvel élève</Button>}
           </>
-        ) : undefined}
+        )}
       />
 
       <div className="grid grid-4">

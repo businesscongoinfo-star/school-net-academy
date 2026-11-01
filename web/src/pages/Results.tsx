@@ -2,14 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Award, Users, TrendingUp, Plus, Trash2, Award as AwardIcon, SearchX, AlertTriangle, Pencil,
+  Download, FileText, Printer,
 } from 'lucide-react';
 import { del, get, patch, post, qs, ApiError } from '../lib/api';
 import type { Meta, ResultRow } from '../lib/types';
 import { useAuth } from '../lib/auth';
 import { appreciationOf } from '../lib/labels';
 import { colorFor, formatAverage, formatDate } from '../lib/format';
+import { datedFilename, downloadCsv } from '../lib/csv';
 import {
-  Avatar, Badge, Button, Card, EmptyState, Field, Input, PageHeader, Pagination, ScorePill,
+  Avatar, Badge, Button, Card, EmptyState, Field, IconButton, Input, PageHeader, Pagination, ScorePill,
   SearchInput, Select, StatCard, TableSkeleton, Tabs,
 } from '../components/ui';
 import { ConfirmDialog, Modal } from '../components/overlays';
@@ -45,6 +47,7 @@ export function Results() {
   const [form, setForm] = useState<GradeForm | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<{ id: string; label: string } | null>(null);
+  const [bulletin, setBulletin] = useState<ResultRow | null>(null);
 
   const meta = useQuery({ queryKey: ['meta'], queryFn: () => get<Meta>('/meta') });
   const activeTerm = term || meta.data?.currentTerm || '';
@@ -136,12 +139,52 @@ export function Results() {
 
   const studentName = (studentId: string) => meta.data?.students.find((student) => student.id === studentId)?.name ?? '';
 
+  const ranked = useMemo(
+    () => [...(data?.items ?? [])]
+      .filter((row) => row.average !== null && row.average !== undefined)
+      .sort((a, b) => (b.average ?? 0) - (a.average ?? 0)),
+    [data],
+  );
+  const rankOf = (studentId: string) => {
+    const index = ranked.findIndex((row) => row.studentId === studentId);
+    return index === -1 ? null : index + 1;
+  };
+  const school = meta.data?.school?.name ?? 'School Net Academy';
+
+  function exportCsv() {
+    const columns = [
+      { header: 'Rang', value: (row: ResultRow) => rankOf(row.studentId) ?? '' },
+      { header: 'Élève', value: (row: ResultRow) => row.studentName },
+      { header: 'Matricule', value: (row: ResultRow) => row.matricule },
+      { header: 'Classe', value: (row: ResultRow) => row.className ?? '' },
+      ...subjects.map((subject) => ({
+        header: subject,
+        value: (row: ResultRow) => row.subjects[subject]?.score ?? '',
+      })),
+      { header: 'Moyenne /20', value: (row: ResultRow) => (row.average === null || row.average === undefined ? '' : row.average) },
+      { header: 'Appréciation', value: (row: ResultRow) => row.appreciation },
+    ];
+    const count = downloadCsv(datedFilename(`resultats-${activeTerm.replace(/\s+/g, '-').toLowerCase()}`), rows, columns);
+    toast.success('Export CSV prêt', `${count} bulletin(s) — ${activeTerm}.`);
+  }
+
+  const bulletinRows = bulletin
+    ? Object.entries(bulletin.subjects).map(([subject, grade]) => ({ subject, ...grade }))
+    : [];
+  const bulletinPoints = bulletinRows.reduce((sum, row) => sum + row.score * row.coefficient, 0);
+  const bulletinCoefs = bulletinRows.reduce((sum, row) => sum + row.coefficient, 0);
+
   return (
     <>
       <PageHeader
         title="Résultats"
         subtitle="Notes par matière, moyennes pondérées et appréciations."
-        actions={canEdit ? <Button variant="primary" icon={Plus} onClick={() => openCreate()}>Saisir une note</Button> : undefined}
+        actions={(
+          <>
+            <Button icon={Download} onClick={exportCsv} disabled={!rows.length}>Exporter</Button>
+            {canEdit && <Button variant="primary" icon={Plus} onClick={() => openCreate()}>Saisir une note</Button>}
+          </>
+        )}
       />
 
       <div className="grid grid-4">
@@ -190,7 +233,7 @@ export function Results() {
                   {subjects.map((subject) => <th key={subject}>{subject}</th>)}
                   <th>Moyenne</th>
                   <th>Appréciation</th>
-                  {canEdit && <th aria-label="Actions" />}
+                  <th aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>
@@ -234,13 +277,12 @@ export function Results() {
                     })}
                     <td><ScorePill value={row.average} /></td>
                     <td><Badge tone={appreciationOf(row.average).tone}>{row.appreciation}</Badge></td>
-                    {canEdit && (
-                      <td>
-                        <div className="actions">
-                          <Button size="sm" variant="ghost" icon={Pencil} onClick={() => openCreate(row.studentId)}>Note</Button>
-                        </div>
-                      </td>
-                    )}
+                    <td>
+                      <div className="actions">
+                        <Button size="sm" variant="ghost" icon={FileText} onClick={() => setBulletin(row)}>Bulletin</Button>
+                        {canEdit && <IconButton icon={Pencil} label="Ajouter une note" onClick={() => openCreate(row.studentId)} />}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -314,6 +356,96 @@ export function Results() {
             <Field label="Appréciation de l'enseignant" htmlFor="gComment" className="span-2">
               <Input id="gComment" value={form.comment} onChange={(event) => setForm({ ...form, comment: event.target.value })} placeholder="Bon travail, participation régulière…" />
             </Field>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={Boolean(bulletin)}
+        onClose={() => setBulletin(null)}
+        title="Bulletin de notes"
+        description={`${activeTerm} · ${school}`}
+        wide
+        footer={(
+          <>
+            <Button variant="ghost" onClick={() => setBulletin(null)}>Fermer</Button>
+            <Button variant="primary" icon={Printer} onClick={() => window.print()}>Imprimer / PDF</Button>
+          </>
+        )}
+      >
+        {bulletin && (
+          <div className="bulletin" id="bulletin">
+            <div className="bulletin-head">
+              <div>
+                <div className="bulletin-school">{school}</div>
+                <div className="bulletin-sub">Enseignement général et supérieur · Brazzaville, Congo</div>
+              </div>
+              <div className="bulletin-meta">
+                <div><strong>{activeTerm}</strong></div>
+                <div>Année scolaire {new Date().getFullYear() - 1}–{new Date().getFullYear()}</div>
+                <div>Édité le {formatDate(new Date().toISOString())}</div>
+              </div>
+            </div>
+
+            <div className="bulletin-title">Bulletin de notes</div>
+
+            <div className="bulletin-info">
+              <div><span>Élève</span> <strong>{bulletin.studentName}</strong></div>
+              <div><span>Matricule</span> <strong>{bulletin.matricule}</strong></div>
+              <div><span>Classe</span> <strong>{bulletin.className ?? '—'}</strong></div>
+              <div><span>Niveau</span> <strong>{bulletin.level ?? '—'}</strong></div>
+            </div>
+
+            <table className="bulletin-table">
+              <thead>
+                <tr>
+                  <th>Matière</th>
+                  <th className="num">Note /20</th>
+                  <th className="num">Coef.</th>
+                  <th className="num">Points</th>
+                  <th>Appréciation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bulletinRows.map((row) => (
+                  <tr key={row.subject}>
+                    <td>{row.subject}</td>
+                    <td className="num">{row.score.toFixed(2).replace('.', ',')}</td>
+                    <td className="num">{row.coefficient}</td>
+                    <td className="num">{(row.score * row.coefficient).toFixed(2).replace('.', ',')}</td>
+                    <td>{appreciationOf(row.score).label}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td><strong>Total</strong></td>
+                  <td className="num">—</td>
+                  <td className="num"><strong>{bulletinCoefs}</strong></td>
+                  <td className="num"><strong>{bulletinPoints.toFixed(2).replace('.', ',')}</strong></td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+
+            <div className="bulletin-summary">
+              <div>Moyenne générale <b>{formatAverage(bulletin.average)}/20</b></div>
+              <div>
+                Rang <b>{rankOf(bulletin.studentId) ?? '—'}{rankOf(bulletin.studentId) ? ` / ${ranked.length}` : ''}</b>
+              </div>
+              <div>Mention <b>{bulletin.appreciation}</b></div>
+              <div>
+                Décision <b>{bulletin.average !== null && bulletin.average >= 10 ? 'Admis(e)' : 'Doit progresser'}</b>
+              </div>
+            </div>
+
+            <div className="bulletin-sign">
+              <div>Le professeur titulaire</div>
+              <div>La direction</div>
+            </div>
+            <div className="bulletin-foot">
+              Document généré par School Net Academy · {bulletin.matricule} · {activeTerm} · Notes plafonnées à 20/20
+            </div>
           </div>
         )}
       </Modal>

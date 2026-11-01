@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Plus, Pencil, Trash2, GraduationCap, Users, BookOpen, SearchX, Mail, Phone, AlertTriangle,
+  Plus, Pencil, Trash2, GraduationCap, Users, BookOpen, SearchX, Mail, Phone, AlertTriangle, Download,
 } from 'lucide-react';
 import { del, get, patch, post, qs, ApiError } from '../lib/api';
 import type { Teacher } from '../lib/types';
 import { useAuth } from '../lib/auth';
 import { TEACHER_STATUS, labelOf, toneOf } from '../lib/labels';
 import { colorFor, formatDate } from '../lib/format';
+import { datedFilename, downloadCsv } from '../lib/csv';
 import {
   Avatar, Badge, Button, Card, EmptyState, Field, IconButton, Input, PageHeader, Pagination,
   SearchInput, Select, StatCard, TableSkeleton, Textarea,
@@ -111,12 +112,32 @@ export function Teachers() {
     saveMutation.mutate(form);
   }
 
+  function exportCsv() {
+    const count = downloadCsv(datedFilename('enseignants'), items, [
+      { header: 'Nom', value: (t) => t.lastName },
+      { header: 'Prénom', value: (t) => t.firstName },
+      { header: 'Matière', value: (t) => t.subject },
+      { header: 'Statut', value: (t) => labelOf(TEACHER_STATUS, t.status) },
+      { header: 'E-mail', value: (t) => t.email },
+      { header: 'Téléphone', value: (t) => t.phone ?? '' },
+      { header: 'Embauche', value: (t) => t.hiredAt ?? '' },
+      { header: 'Classes', value: (t) => t.classCount ?? 0 },
+      { header: 'Cours', value: (t) => t.courseCount ?? 0 },
+    ]);
+    toast.success('Export CSV prêt', `${count} enseignant(s) exporté(s).`);
+  }
+
   return (
     <>
       <PageHeader
         title="Enseignants"
         subtitle="Équipe pédagogique, matières et affectations aux classes."
-        actions={isAdmin ? <Button variant="primary" icon={Plus} onClick={openCreate}>Nouvel enseignant</Button> : undefined}
+        actions={isAdmin ? (
+          <>
+            <Button icon={Download} onClick={exportCsv} disabled={!items.length}>Exporter</Button>
+            <Button variant="primary" icon={Plus} onClick={openCreate}>Nouvel enseignant</Button>
+          </>
+        ) : undefined}
       />
 
       <div className="grid grid-4">

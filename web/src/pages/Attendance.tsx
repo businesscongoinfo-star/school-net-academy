@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, XCircle, Clock3, ShieldCheck, ClipboardCheck, AlertTriangle, Users, CalendarDays,
+  Download,
 } from 'lucide-react';
 import { get, post, qs, ApiError } from '../lib/api';
+import { datedFilename, downloadCsv } from '../lib/csv';
+import { formatDate } from '../lib/format';
 import type { AttendanceRecord, Meta } from '../lib/types';
 import { useAuth } from '../lib/auth';
 import { ATTENDANCE_STATUS, labelOf, toneOf } from '../lib/labels';
@@ -135,21 +138,37 @@ export function Attendance() {
       ? programs.find((option) => option.id === programId)?.name
       : null;
 
+  function exportCsv() {
+    const count = downloadCsv(datedFilename(`presences-${date}`), records, [
+      { header: 'Date', value: (r) => r.date },
+      { header: 'Séance', value: (r) => r.session ?? '' },
+      { header: 'Élève', value: (r) => r.studentName },
+      { header: 'Matricule', value: (r) => r.matricule },
+      { header: 'Classe / Filière', value: (r) => r.className ?? r.programName ?? '' },
+      { header: 'Statut', value: (r) => labelOf(ATTENDANCE_STATUS, r.status) },
+      { header: 'Note', value: (r) => r.note ?? '' },
+    ]);
+    toast.success('Export CSV prêt', `${count} pointage(s) exporté(s).`);
+  }
+
   return (
     <>
       <PageHeader
         title="Présences"
         subtitle="Pointage quotidien des élèves et des étudiants, séance par séance."
         actions={(
-          <Button
-            variant="primary"
-            icon={ClipboardCheck}
-            loading={bulkMutation.isPending}
-            disabled={!roster.length}
-            onClick={() => bulkMutation.mutate('present')}
-          >
-            Tout marquer présent
-          </Button>
+          <>
+            <Button icon={Download} onClick={exportCsv} disabled={!records.length}>Exporter</Button>
+            <Button
+              variant="primary"
+              icon={ClipboardCheck}
+              loading={bulkMutation.isPending}
+              disabled={!roster.length}
+              onClick={() => bulkMutation.mutate('present')}
+            >
+              Tout marquer présent
+            </Button>
+          </>
         )}
       />
 

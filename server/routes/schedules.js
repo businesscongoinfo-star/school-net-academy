@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { all, get, run, now, uid } from '../db.js';
-import { parseBody, asyncHandler, notFound, forbidden, badRequest } from '../helpers.js';
+import { parseBody, asyncHandler, notFound, forbidden, badRequest, conflict } from '../helpers.js';
 
 const router = Router();
 
@@ -28,6 +28,53 @@ const SELECT = `SELECT s.id, s.title, s.class_id AS classId, s.program_id AS pro
   LEFT JOIN classes c ON c.id = s.class_id
   LEFT JOIN programs p ON p.id = s.program_id
   LEFT JOIN teachers t ON t.id = s.teacher_id`;
+
+const toMinutes = (time) => {
+  const [hours, minutes] = String(time ?? '0:0').split(':').map(Number);
+  return (hours || 0) * 60 + (minutes || 0);
+};
+
+/**
+ * Vérifie qu'aucune séance existante ne chevauche la nouvelle, sur la même
+ * classe, la même filière, le même enseignant ou la même salle. Renvoie une
+ * erreur 409 explicite plutôt que de laisser créer un double emploi du temps.
+ */
+function ensureNoConflict(data, excludeId = '') {
+  const start = toMinutes(data.startTime);
+  const end = toMinutes(data.endTime);
+  const sameRoom = (a, b) => Boolean(a && b) && a.trim().toLowerCase() === b.trim().toLowerCase();
+
+  const rows = all(
+    `SELECT s.id, s.title, s.class_id AS classId, s.program_id AS programId, s.teacher_id AS teacherId,
+            s.room, s.start_time AS startTime, s.end_time AS endTime,
+            c.name AS className, p.name AS programName,
+            t.first_name || ' ' || t.last_name AS teacherName
+       FROM schedules s
+       LEFT JOIN classes c ON c.id = s.class_id
+       LEFT JOIN programs p ON p.id = s.program_id
+       LEFT JOIN teachers t ON t.id = s.teacher_id
+      WHERE s.day = ? AND s.id <> ?`,
+    data.day, excludeId || '',
+  );
+
+  for (const row of rows) {
+    const overlaps = start < toMinutes(row.endTime) && end > toMinutes(row.startTime);
+    if (!overlaps) continue;
+
+    let subject = '';
+    if (data.classId && row.classId === data.classId) subject = `La classe ${row.className}`;
+    else if (data.programId && row.programId === data.programId) subject = `La filière ${row.programName}`;
+    else if (data.teacherId && row.teacherId === data.teacherId) subject = `L'enseignant ${row.teacherName}`;
+    else if (sameRoom(data.room, row.room)) subject = `La salle ${row.room}`;
+
+    if (subject) {
+      throw conflict(
+        `${data.day} de ${row.startTime} à ${row.endTime} : ${subject} a déjà « ${row.title} ». `
+        + 'Choisissez un autre créneau, une autre salle ou un autre intervenant.',
+      );
+    }
+  }
+}
 
 router.get('/', asyncHandler(async (req, res) => {
   const { day = '', classId = '', programId = '', teacherId = '' } = req.query;
@@ -56,6 +103,7 @@ router.post('/', asyncHandler(async (req, res) => {
   const data = parseBody(schema, req.body);
   if (!data.classId && !data.programId) throw badRequest('Sélectionnez une classe ou une filière.');
   if (data.endTime <= data.startTime) throw badRequest("L'heure de fin doit être postérieure à l'heure de début.");
+  ensureNoConflict(data);
   const id = uid('sch');
   const ts = now();
   run(
@@ -70,8 +118,16 @@ router.post('/', asyncHandler(async (req, res) => {
 
 router.patch('/:id', asyncHandler(async (req, res) => {
   if (req.user.role === 'parent') throw forbidden();
-  if (!get('SELECT id FROM schedules WHERE id = ?', req.params.id)) throw notFound('Séance introuvable.');
+  const existing = get(`${SELECT} WHERE s.id = ?`, req.params.id);
+  if (!existing) throw notFound('Séance introuvable.');
   const data = parseBody(schema.partial(), req.body);
+
+  const merged = { ...existing, ...data };
+  if (merged.endTime <= merged.startTime) {
+    throw badRequest("L'heure de fin doit être postérieure à l'heure de début.");
+  }
+  ensureNoConflict(merged, req.params.id);
+
   const map = {
     title: 'title', classId: 'class_id', programId: 'program_id', teacherId: 'teacher_id',
     room: 'room', day: 'day', startTime: 'start_time', endTime: 'end_time', kind: 'kind',

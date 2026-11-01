@@ -86,6 +86,15 @@ chacun de ces profils.
   tiroirs plein écran sur mobile.
 - Site public (accueil, fonctionnalités, modules, admissions, contact) + page de connexion
   avec panneau de marque et comptes de démonstration.
+- **Export CSV** (séparateur `;`, UTF-8 BOM, compatible Excel) sur les élèves, les paiements,
+  les enseignants, les résultats, les présences et la bibliothèque.
+- **Bulletins imprimables** : fiche officielle par élève (matières, coefficients, points,
+  moyenne, rang, mention, décision, signatures) prête à imprimer ou à enregistrer en PDF.
+- **Titre d'onglet par page** et **écran de reprise** en cas d'erreur de rendu.
+- **Emploi du temps protégé** : un créneau déjà pris (classe, filière, enseignant ou salle)
+  est refusé avec un message explicite, à la création comme à la modification.
+- **Historique protégé** : un élève qui a des paiements, notes ou présences ne peut pas être
+  supprimé — l'interface invite à l'archiver (statut « Parti »).
 
 ---
 
@@ -116,6 +125,8 @@ configuration CORS, des URL relatives partout.
 | `npm run seed:reset` | Efface et régénère les données de démonstration |
 | `npm run typecheck` | Vérification TypeScript de l'interface |
 | `node scripts/smoke.mjs` | Test de rendu de toutes les pages avec les données réelles |
+| `npm run audit` | Recette fonctionnelle de l'API : 87 vérifications (CRUD, droits, erreurs) |
+| `npm run check` | Enchaîne typecheck + build + rendu des pages + audit API |
 
 ### Développement avec rechargement à chaud
 

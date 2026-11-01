@@ -14,7 +14,9 @@
     "seed:reset": "node server/seed.js --reset",
     "typecheck": "tsc --noEmit -p web/tsconfig.json",
     "prestart": "node scripts/ensure-build.mjs",
-    "snapshot": "node scripts/build-demo-snapshot.mjs"
+    "snapshot": "node scripts/build-demo-snapshot.mjs",
+    "audit": "node scripts/audit.mjs",
+    "check": "npm run typecheck && npm run build && node scripts/smoke.mjs && node scripts/audit.mjs"
   },
   "engines": {
     "node": ">=22.5"

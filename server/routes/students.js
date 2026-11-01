@@ -209,8 +209,28 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 
 router.delete('/:id', asyncHandler(async (req, res) => {
   if (req.user.role !== 'admin') throw forbidden();
-  const existing = get('SELECT id FROM students WHERE id = ?', req.params.id);
+  const existing = get('SELECT id, first_name AS firstName, last_name AS lastName FROM students WHERE id = ?', req.params.id);
   if (!existing) throw notFound('Élève introuvable.');
+
+  // Supprimer une fiche effacerait en cascade les paiements, notes, présences et
+  // emprunts : on refuse et on propose l'archivage (statut « Parti »).
+  const counts = {
+    paiements: get('SELECT COUNT(*) AS c FROM payments WHERE student_id = ?', req.params.id).c,
+    notes: get('SELECT COUNT(*) AS c FROM grades WHERE student_id = ?', req.params.id).c,
+    présences: get('SELECT COUNT(*) AS c FROM attendance WHERE student_id = ?', req.params.id).c,
+    emprunts: get('SELECT COUNT(*) AS c FROM loans WHERE student_id = ?', req.params.id).c,
+  };
+  const history = Object.entries(counts)
+    .filter(([, count]) => count > 0)
+    .map(([label, count]) => `${count} ${label}`);
+
+  if (history.length) {
+    throw conflict(
+      `La fiche de ${existing.firstName} ${existing.lastName} contient un historique (${history.join(', ')}). `
+      + 'Pour la conserver, passez son statut à « Parti » au lieu de la supprimer.',
+    );
+  }
+
   run('DELETE FROM students WHERE id = ?', req.params.id);
   res.json({ ok: true });
 }));

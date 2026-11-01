@@ -3,13 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import {
   Plus, Pencil, Trash2, Wallet, Clock, AlertCircle, CheckCircle2, SearchX, AlertTriangle,
-  Banknote, Receipt, ArrowUpRight, TrendingUp,
+  Banknote, Receipt, ArrowUpRight, TrendingUp, Download,
 } from 'lucide-react';
 import { del, get, patch, post, qs, ApiError } from '../lib/api';
 import type { Meta, Payment } from '../lib/types';
 import { useAuth } from '../lib/auth';
 import { PAYMENT_STATUS, labelOf, toneOf } from '../lib/labels';
 import { colorFor, formatDate, formatMoney, relativeTime, toDateInput } from '../lib/format';
+import { datedFilename, downloadCsv } from '../lib/csv';
 import {
   Avatar, Badge, Button, Card, EmptyState, Field, IconButton, Input, PageHeader, Pagination,
   SearchInput, Select, StatCard, TableSkeleton, Textarea,
@@ -169,12 +170,35 @@ export function Payments() {
 
   const hasFilters = Boolean(search || statusFilter || methodFilter || typeFilter);
 
+  function exportCsv() {
+    const count = downloadCsv(datedFilename('paiements'), items, [
+      { header: 'Référence', value: (p) => p.reference },
+      { header: 'Élève', value: (p) => p.studentName ?? [p.firstName, p.lastName].filter(Boolean).join(' ') },
+      { header: 'Matricule', value: (p) => p.matricule ?? '' },
+      { header: 'Classe', value: (p) => p.className ?? '' },
+      { header: 'Type', value: (p) => p.type },
+      { header: 'Moyen', value: (p) => p.method },
+      { header: 'Statut', value: (p) => labelOf(PAYMENT_STATUS, p.status) },
+      { header: 'Montant (FCFA)', value: (p) => p.amount },
+      { header: 'Payé le', value: (p) => p.paidAt ?? '' },
+      { header: 'Échéance', value: (p) => p.dueDate ?? '' },
+      { header: 'Période', value: (p) => p.term ?? '' },
+      { header: 'Note', value: (p) => p.note ?? '' },
+    ]);
+    toast.success('Export CSV prêt', `${count} paiement(s) exporté(s).`);
+  }
+
   return (
     <>
       <PageHeader
         title={isAdmin ? 'Paiements' : 'Mes paiements'}
         subtitle={isAdmin ? 'Encaissements, échéances et relances de scolarité.' : 'Historique des frais de scolarité de vos enfants.'}
-        actions={isAdmin ? <Button variant="primary" icon={Plus} onClick={() => openCreate()}>Enregistrer un paiement</Button> : undefined}
+        actions={(
+          <>
+            <Button icon={Download} onClick={exportCsv} disabled={!items.length}>Exporter</Button>
+            {isAdmin && <Button variant="primary" icon={Plus} onClick={() => openCreate()}>Enregistrer un paiement</Button>}
+          </>
+        )}
       />
 
       <div className="grid grid-4">

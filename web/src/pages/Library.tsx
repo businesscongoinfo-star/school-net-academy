@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Pencil, Trash2, Library as LibraryIcon, BookOpen, Users, AlertTriangle, RotateCcw, ArrowLeftRight,
+  Download,
 } from 'lucide-react';
 import { del, get, patch, post, qs, ApiError } from '../lib/api';
 import type { Book, Loan, Meta } from '../lib/types';
 import { useAuth } from '../lib/auth';
 import { LOAN_STATUS, labelOf, toneOf } from '../lib/labels';
 import { formatDate, toDateInput } from '../lib/format';
+import { datedFilename, downloadCsv } from '../lib/csv';
 import {
   Badge, Button, Card, EmptyState, Field, IconButton, Input, PageHeader, SearchInput, Select, StatCard,
   TableSkeleton, Tabs,
@@ -169,6 +171,32 @@ export function Library() {
   const students = (meta?.students ?? []).filter((student) => student.status === 'actif');
   const availableBooks = books.filter((book) => book.copiesAvailable > 0);
 
+  function exportCsv() {
+    const count = tab === 'ouvrages'
+      ? downloadCsv(datedFilename('catalogue-bibliotheque'), books, [
+        { header: 'Titre', value: (b) => b.title },
+        { header: 'Auteur', value: (b) => b.author ?? '' },
+        { header: 'ISBN', value: (b) => b.isbn ?? '' },
+        { header: 'Catégorie', value: (b) => b.category ?? '' },
+        { header: 'Rayon', value: (b) => b.shelf ?? '' },
+        { header: 'Exemplaires', value: (b) => b.copiesTotal },
+        { header: 'Disponibles', value: (b) => b.copiesAvailable },
+        { header: 'Prêts actifs', value: (b) => b.activeLoans },
+      ])
+      : downloadCsv(datedFilename('prets-bibliotheque'), loans, [
+        { header: 'Ouvrage', value: (l) => l.bookTitle },
+        { header: 'Emprunteur', value: (l) => l.studentName },
+        { header: 'Matricule', value: (l) => l.matricule },
+        { header: 'Classe / Filière', value: (l) => l.className ?? l.programName ?? '' },
+        { header: 'Prêté le', value: (l) => l.loanedAt },
+        { header: 'Retour prévu', value: (l) => l.dueAt },
+        { header: 'Rendu le', value: (l) => l.returnedAt ?? '' },
+        { header: 'Statut', value: (l) => labelOf(LOAN_STATUS, l.status) },
+      ]);
+    toast.success('Export CSV prêt', `${count} ligne(s) exportée(s).`);
+  }
+
+
   return (
     <>
       <PageHeader
@@ -176,6 +204,13 @@ export function Library() {
         subtitle="Catalogue, exemplaires disponibles et suivi des prêts."
         actions={(
           <>
+            <Button
+              icon={Download}
+              onClick={exportCsv}
+              disabled={tab === 'ouvrages' ? !books.length : !loans.length}
+            >
+              Exporter
+            </Button>
             {tab === 'ouvrages' && isAdmin && (
               <Button variant="secondary" icon={Plus} onClick={openCreateBook}>Ajouter un ouvrage</Button>
             )}

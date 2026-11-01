@@ -1,8 +1,9 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './lib/auth';
 import { AppShell } from './components/layout';
+import { ErrorBoundary } from './components/error-boundary';
 import { Logo } from './components/logo';
 import { PageSkeleton } from './components/ui';
 import { Landing } from './pages/Landing';
@@ -40,6 +41,38 @@ function Splash() {
   );
 }
 
+const TITLES: Record<string, string> = {
+  '/': 'School Net Academy — Gestion scolaire',
+  '/connexion': 'Connexion',
+  '/app': 'Tableau de bord',
+  '/app/eleves': 'Élèves',
+  '/app/mes-enfants': 'Mes enfants',
+  '/app/classes': 'Classes',
+  '/app/enseignants': 'Enseignants',
+  '/app/presences': 'Présences',
+  '/app/facultes': 'Facultés',
+  '/app/filieres': 'Filières',
+  '/app/unites': "Unités d'enseignement",
+  '/app/emploi-du-temps': 'Emploi du temps',
+  '/app/bibliotheque': 'Bibliothèque',
+  '/app/inscriptions': 'Inscriptions',
+  '/app/paiements': 'Paiements',
+  '/app/resultats': 'Résultats',
+  '/app/cours': 'Cours en ligne',
+  '/app/annonces': 'Annonces',
+  '/app/parametres': 'Paramètres',
+};
+
+/** Met à jour le titre de l'onglet selon la page courante. */
+function RouteTitle() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const label = TITLES[pathname];
+    document.title = label ? (pathname === '/' ? label : `${label} · School Net Academy`) : 'Page introuvable · School Net Academy';
+  }, [pathname]);
+  return null;
+}
+
 const page = (element: ReactNode) => <Suspense fallback={<PageSkeleton />}>{element}</Suspense>;
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -58,7 +91,9 @@ function RoleGate({ roles, children }: { roles: string[]; children: ReactNode })
 
 export function App() {
   return (
-    <Routes>
+    <ErrorBoundary>
+      <RouteTitle />
+      <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/connexion" element={<Login />} />
 
@@ -89,7 +124,8 @@ export function App() {
         <Route path="parametres" element={page(<Settings />)} />
       </Route>
 
-      <Route path="*" element={<Suspense fallback={<Splash />}><NotFound /></Suspense>} />
-    </Routes>
+        <Route path="*" element={<Suspense fallback={<Splash />}><NotFound /></Suspense>} />
+      </Routes>
+    </ErrorBoundary>
   );
 }
