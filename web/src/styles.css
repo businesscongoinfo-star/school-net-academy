@@ -957,3 +957,7 @@ table.table { width: 100%; border-collapse: separate; border-spacing: 0; font-si
 @media (max-width: 560px) {
   .att-btn span { display: none; }
 }
+
+/* ------------------------------- Dashboard -------------------------------- */
+.dash-cols { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 18px; }
+@media (max-width: 1000px) { .dash-cols { grid-template-columns: minmax(0, 1fr); } }

@@ -220,7 +220,7 @@ export function Dashboard() {
       )}
 
       {role !== 'parent' && data && (
-        <div className="mt-16" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)', gap: 18 }}>
+        <div className="mt-16 dash-cols">
           <Card>
             <div className="card-head">
               <div>
@@ -577,7 +577,7 @@ export function Dashboard() {
       )}
 
       {role !== 'parent' && data && (
-        <div className="mt-16" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)', gap: 18 }}>
+        <div className="mt-16 dash-cols">
           <Card>
             <div className="card-head">
               <div>
