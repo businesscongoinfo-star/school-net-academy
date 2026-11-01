@@ -214,17 +214,55 @@ L'application est un **serveur Node.js** (Express + SQLite) qui sert l'API et l'
 depuis un seul processus. Elle n'est donc **pas** un site statique : un hébergement qui ne sert que
 des fichiers (`index.html`, CSS, JS) affichera une page vide ou non stylée.
 
-Options possibles :
+### Render — en un clic (recommandé, gratuit)
 
-1. **Serveur Node classique** (recommandé) : Render, Railway, Fly.io, VPS, Docker —
-   `npm install && npm run build && npm start` avec un volume persistant pour `data/school-net.db`.
-2. **Sandbox / prévisualisation intégrée** : c'est ce qui est fourni ici, l'URL de prévisualisation
-   pointe directement sur le processus Node.
-3. **Vercel** : uniquement avec adaptation — les routes `/api/*` doivent devenir des *serverless
-   functions* et la base migrer vers un service externe (Postgres, Turso/libSQL, Neon). Une simple
-   mise en ligne statique du dossier `web/dist` ne peut pas fonctionner sans backend.
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/businesscongoinfo-star/school-net-academy)
 
----
+1. Cliquez sur le bouton ci-dessus (ou *New → Blueprint* sur [render.com](https://render.com) et
+   sélectionnez le dépôt `businesscongoinfo-star/school-net-academy`).
+2. Render lit `render.yaml`, compile (`npm ci && npm run build`) et démarre (`npm start`).
+3. Vous obtenez une URL publique du type `https://school-net-academy.onrender.com`.
+
+Notes :
+
+- La base SQLite est **créée et remplie automatiquement** au premier démarrage (≈230 inscrits,
+  4 facultés, 8 filières, 210 UE, bibliothèque, présences…).
+- Sur le **plan gratuit** le disque est éphémère : les données sont réinitialisées à chaque
+  redéploiement ou redémarrage. Pour les conserver, décommentez le bloc `disk` dans `render.yaml`
+  (plan payant) ou montez un volume persistant.
+- Le plan gratuit met le service en veille après inactivité : le premier chargement peut prendre
+  ~30 secondes.
+
+### Railway / Fly.io / VPS — via Docker
+
+Un `Dockerfile` de production est fourni (Node 22, build de la SPA, base dans `/data`) :
+
+```bash
+docker build -t school-net-academy .
+docker run -p 3000:3000 -v $(pwd)/data:/data school-net-academy
+```
+
+Railway détecte le `Dockerfile` automatiquement ; sur Fly.io : `fly launch` puis
+`fly volumes create data --size 1` et montez le volume sur `/data`.
+
+### Serveur classique
+
+```bash
+npm ci
+npm run build
+DB_FILE=/var/lib/school-net/school-net.db PORT=3000 npm start
+```
+
+Variables d'environnement utiles : `PORT`, `DB_FILE` (chemin de la base), `SEED=force`
+(régénère les données de démonstration au démarrage).
+
+### Vercel
+
+Vercel ne convient **pas en l'état** : le projet attend un serveur Node persistant et une base
+SQLite sur disque. Une mise en ligne statique de `web/dist` renvoie une page non stylée (c'est le
+symptôme d'un ancien déploiement Vercel). Pour rester sur Vercel il faudrait convertir les routes
+`/api/*` en *serverless functions* et migrer la base vers un service externe (Turso/libSQL, Neon,
+Postgres) — adaptation non incluse ici.
 
 ## Sécurité
 
