@@ -2,15 +2,21 @@ import { Link } from 'react-router-dom';
 import {
   ArrowRight, BarChart3, BookOpen, CalendarCheck, ClipboardList,
   GraduationCap, Megaphone, ShieldCheck, Users, Wallet, Award, ArrowUpRight, Check, CalendarDays,
+  Bell, CreditCard, Globe2, MessageSquare, Nfc, QrCode, ScanLine, Sparkles, Building2,
+  UserCog, Smartphone, Send, Star, Rocket, PlayCircle,
 } from 'lucide-react';
 import { Logo } from '../components/logo';
+import { NewsletterForm } from '../components/newsletter-form';
+import { AiChat } from '../components/ai-chat';
 import { formatMoney } from '../lib/format';
+import { COUNTRIES } from '../lib/countries';
 
 const NAV = [
   { label: 'Accueil', href: '#accueil' },
   { label: 'Fonctionnalités', href: '#fonctionnalites' },
   { label: 'Modules', href: '#modules' },
-  { label: 'Admissions', href: '#admissions' },
+  { label: 'Cartes & SMS', href: '#nouveautes' },
+  { label: 'Tarifs', href: '#tarifs' },
   { label: 'Contact', href: '#contact' },
 ];
 
@@ -85,8 +91,8 @@ export function Landing() {
         </nav>
         <div className="actions">
           <Link to="/connexion" className="btn btn-ghost">Se connecter</Link>
-          <Link to="/connexion" className="btn btn-primary">
-            Espace école <ArrowRight size={15} />
+          <Link to="/inscription" className="btn btn-primary">
+            Essai gratuit <ArrowRight size={15} />
           </Link>
         </div>
       </header>
@@ -96,7 +102,7 @@ export function Landing() {
           <div>
             <span className="lp-eyebrow">
               <span className="pill">Nouveau</span>
-              Écoles & universités · Congo
+              Écoles & universités · {COUNTRIES.length} pays
             </span>
             <h1>
               Votre école et votre université,<br />
@@ -108,10 +114,15 @@ export function Landing() {
               et l'enseignement supérieur.
             </p>
             <div className="cta">
-              <Link to="/connexion" className="btn btn-primary btn-lg">
-                Ouvrir le tableau de bord <ArrowRight size={17} />
+              <Link to="/inscription" className="btn btn-primary btn-lg">
+                Créer mon compte — 7 jours offerts <ArrowRight size={17} />
               </Link>
-              <a href="#fonctionnalites" className="btn btn-lg">Découvrir les modules</a>
+              <a href="#tarifs" className="btn btn-lg">Voir les tarifs</a>
+            </div>
+            <div className="lp-hero-note">
+              <span className="row gap-6"><Check size={13} /> Sans carte bancaire</span>
+              <span className="row gap-6"><Check size={13} /> Mobile Money accepté</span>
+              <span className="row gap-6"><Check size={13} /> Prêt en 3 minutes</span>
             </div>
             <div className="lp-trust">
               <span className="avatars">
@@ -277,17 +288,220 @@ export function Landing() {
         </div>
       </section>
 
+
+      <section className="lp-section lp-showcase" id="nouveautes">
+        <div className="lp-section-inner">
+          <div className="lp-section-head">
+            <div className="lp-eyebrow-sm">Nouveautés de la rentrée</div>
+            <h2>La carte scolaire intelligente, les parents informés en temps réel.</h2>
+            <p>
+              Chaque élève reçoit une carte d'identité scolaire avec QR code, code-barres et badge NFC.
+              Un scan et la présence est signée ; une inscription ou un paiement et les parents reçoivent
+              une notification dans l'application <strong>et</strong> un SMS.
+            </p>
+          </div>
+
+          <div className="lp-showcase-grid">
+            <div className="lp-card-visual">
+              <div className="lp-school-card">
+                <div className="lp-school-card-top">
+                  <span className="brand-mark sm"><GraduationCap size={13} /></span>
+                  <div>
+                    <strong>School Net Academy</strong>
+                    <span>Élève · 6ème A</span>
+                  </div>
+                  <span className="lp-card-chip" />
+                </div>
+                <div className="lp-school-card-name">Merveille Ondongo</div>
+                <div className="lp-school-card-meta">Matricule SNA-2026-042 · 2025–2026</div>
+                <div className="lp-school-card-bottom">
+                  <span className="lp-qr" aria-hidden>
+                    {Array.from({ length: 36 }).map((_, index) => <i key={index} className={index % 3 === 0 || index % 7 === 0 ? 'on' : ''} />)}
+                  </span>
+                  <span className="lp-barcode" aria-hidden />
+                  <span className="lp-nfc"><Nfc size={16} /></span>
+                </div>
+              </div>
+              <div className="lp-scan-pulse" aria-hidden />
+            </div>
+
+            <div className="lp-showcase-list">
+              {[
+                { icon: QrCode, title: 'Carte créée automatiquement', text: 'Dès l\'inscription de l\'élève : QR code, code-barres et badge NFC, prêts à imprimer.' },
+                { icon: ScanLine, title: 'Présence en un bouton', text: 'Le surveillant scanne ou approche le badge : la présence est signée sans papier.' },
+                { icon: Bell, title: 'Notification aux parents', text: 'Inscription, paiement, absence — chaque événement crée une alerte dans l\'application.' },
+                { icon: MessageSquare, title: 'SMS sur le numéro enregistré', text: 'Le tuteur reçoit un SMS même sans smartphone ni connexion internet.' },
+              ].map((item) => (
+                <div key={item.title} className="lp-showcase-item">
+                  <span className="ic"><item.icon size={17} /></span>
+                  <div>
+                    <strong>{item.title}</strong>
+                    <p>{item.text}</p>
+                  </div>
+                </div>
+              ))}
+              <Link to="/inscription" className="btn btn-primary">
+                Tester avec mon établissement <ArrowRight size={15} />
+              </Link>
+            </div>
+          </div>
+
+          <div className="lp-phone-demo">
+            <div className="lp-phone">
+              <div className="lp-phone-notch" />
+              <div className="lp-phone-screen">
+                <div className="lp-notif">
+                  <span className="lp-notif-icon"><CreditCard size={13} /></span>
+                  <div>
+                    <strong>Paiement reçu</strong>
+                    <span>Scolarité · 45 000 FCFA</span>
+                  </div>
+                </div>
+                <div className="lp-notif">
+                  <span className="lp-notif-icon sms"><MessageSquare size={13} /></span>
+                  <div>
+                    <strong>SMS au +242 06 580 82 65</strong>
+                    <span>Votre enfant est bien inscrit en 6ème A.</span>
+                  </div>
+                </div>
+                <div className="lp-notif">
+                  <span className="lp-notif-icon nfc"><Nfc size={13} /></span>
+                  <div>
+                    <strong>Présence signée</strong>
+                    <span>08:02 · Portail principal</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="lp-phone-caption">
+              <Sparkles size={15} />
+              <div>
+                <strong>Les familles rassurées, l'école déchargée.</strong>
+                <p>Les équipes passent moins de temps au téléphone et plus de temps sur la pédagogie.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="lp-section lp-platform-section">
+        <div className="lp-section-inner lp-split">
+          <div>
+            <div className="lp-eyebrow-sm">Super administration</div>
+            <h2 style={{ fontSize: 32, letterSpacing: '-0.03em', marginTop: 10, lineHeight: 1.15 }}>
+              Une équipe, plusieurs espaces, des droits précis.
+            </h2>
+            <p style={{ color: 'var(--ink-500)', marginTop: 14, lineHeight: 1.65 }}>
+              Le propriétaire de la plateforme crée ses agents — support, financier, gestionnaire,
+              marketeur, closer — et chacun n'accède qu'à ce qui le concerne : établissements,
+              facturation, campagnes ou journal SMS.
+            </p>
+            <ul style={{ listStyle: 'none', padding: 0, margin: '20px 0 0', display: 'flex', flexDirection: 'column', gap: 11 }}>
+              {[
+                'Rôles séparés et vérifiés côté serveur (RBAC)',
+                'Création, suspension et conversion des établissements',
+                'Campagnes newsletter avec audience ciblée',
+                'Journal des SMS envoyés aux parents',
+              ].map((item) => (
+                <li key={item} className="row gap-10" style={{ fontSize: 13.5 }}>
+                  <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--primary-soft)', color: 'var(--primary)', display: 'grid', placeItems: 'center', flex: 'none' }}>
+                    <Check size={12} />
+                  </span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="lp-roles">
+            {[
+              { icon: UserCog, role: 'Gestionnaire', scope: 'Établissements, équipe, abonnements' },
+              { icon: ShieldCheck, role: 'Support', scope: 'Assistance, prolongation d\'essai, SMS' },
+              { icon: Wallet, role: 'Financier', scope: 'Facturation, encaissements, revenus' },
+              { icon: Megaphone, role: 'Marketeur', scope: 'Newsletter et base d\'abonnés' },
+              { icon: Rocket, role: 'Closer', scope: 'Conversion des essais en abonnements' },
+            ].map((item) => (
+              <div key={item.role} className="lp-role">
+                <span className="ic"><item.icon size={16} /></span>
+                <div className="grow">
+                  <strong>{item.role}</strong>
+                  <p>{item.scope}</p>
+                </div>
+                <Check size={14} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="lp-section" id="tarifs" style={{ background: '#fff', borderTop: '1px solid var(--line)', borderBottom: '1px solid var(--line)' }}>
+        <div className="lp-section-inner">
+          <div className="lp-section-head">
+            <div className="lp-eyebrow-sm">Tarifs</div>
+            <h2>Un essai de 7 jours, puis une offre à votre mesure.</h2>
+            <p>Prix affichés en FCFA et convertis automatiquement dans la devise de votre pays à l'inscription.</p>
+          </div>
+          <div className="lp-pricing">
+            {[
+              { id: 'essentiel', name: 'Essentiel', price: 15000, tagline: 'Petite école', features: ['Élèves, classes, présences', 'Paiements & reçus', 'Cartes scolaires QR + NFC', '3 comptes utilisateurs'], popular: false },
+              { id: 'pro', name: 'Pro', price: 45000, tagline: 'École & université', features: ['Tout Essentiel', 'Facultés, filières, UE & crédits', 'Emploi du temps & bibliothèque', 'SMS aux parents & notifications', '10 comptes utilisateurs'], popular: true },
+              { id: 'universite', name: 'Université', price: 120000, tagline: 'Campus & LMD', features: ['Tout Pro', 'Multi-campus illimité', 'Pointage NFC multi-portails', 'Support prioritaire', 'Utilisateurs illimités'], popular: false },
+            ].map((plan) => (
+              <div key={plan.id} className={`lp-price${plan.popular ? ' popular' : ''}`}>
+                {plan.popular && <span className="lp-price-flag"><Star size={12} /> Le plus choisi</span>}
+                <strong className="lp-price-name">{plan.name}</strong>
+                <span className="lp-price-tag">{plan.tagline}</span>
+                <div className="lp-price-amount">
+                  {formatMoney(plan.price)}
+                  <span>/mois</span>
+                </div>
+                <ul>
+                  {plan.features.map((feature) => <li key={feature}><Check size={13} /> {feature}</li>)}
+                </ul>
+                <Link to="/inscription" className={plan.popular ? 'btn btn-primary btn-block' : 'btn btn-secondary btn-block'}>
+                  Démarrer l'essai
+                </Link>
+              </div>
+            ))}
+          </div>
+          <p className="lp-pricing-note">
+            <Globe2 size={14} /> {COUNTRIES.length} pays · paiement Mobile Money, carte bancaire, virement ou espèces ·
+            aucune commission sur les frais de scolarité.
+          </p>
+        </div>
+      </section>
+
+      <section className="lp-section lp-newsletter-section" id="newsletter">
+        <div className="lp-section-inner lp-newsletter-card">
+          <div className="grow">
+            <div className="lp-eyebrow-sm">Newsletter</div>
+            <h2 style={{ fontSize: 30, letterSpacing: '-0.03em', marginTop: 8 }}>
+              Les bonnes pratiques de gestion scolaire, une fois par mois.
+            </h2>
+            <p style={{ color: 'var(--ink-500)', marginTop: 10 }}>
+              Guides pratiques, nouveautés de la plateforme et retours d'expérience d'écoles et
+              d'universités africaines. Sans spam, désinscription en un clic.
+            </p>
+          </div>
+          <div className="lp-newsletter-side">
+            <NewsletterForm source="accueil" />
+          </div>
+        </div>
+      </section>
+
       <section className="lp-cta" id="contact">
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <h2>Prêt à essayer la plateforme ?</h2>
+          <h2>Prêt à ouvrir votre espace ?</h2>
           <p>
-            Trois profils de démonstration sont disponibles : direction, enseignant et parent.
-            Aucune installation, aucun mot de passe à retenir.
+            Créez votre établissement en 3 minutes — 7 jours d'essai gratuit, sans carte bancaire.
+            Trois profils de démonstration restent disponibles pour explorer immédiatement.
           </p>
         </div>
         <div style={{ position: 'relative', zIndex: 1, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <Link to="/connexion" className="btn btn-lg" style={{ background: '#fff', borderColor: '#fff', color: 'var(--primary-700)' }}>
-            Se connecter <ArrowUpRight size={16} />
+          <Link to="/inscription" className="btn btn-lg" style={{ background: '#fff', borderColor: '#fff', color: 'var(--primary-700)' }}>
+            Créer mon compte <ArrowUpRight size={16} />
+          </Link>
+          <Link to="/connexion" className="btn btn-lg" style={{ background: 'transparent', borderColor: 'rgba(255,255,255,0.35)', color: '#fff' }}>
+            <PlayCircle size={16} /> Voir la démo
           </Link>
           <a href="mailto:contact@schoolnet.academy" className="btn btn-lg" style={{ background: 'transparent', borderColor: 'rgba(255,255,255,0.35)', color: '#fff' }}>
             Nous contacter
@@ -305,9 +519,17 @@ export function Landing() {
           <a href="mailto:contact@schoolnet.academy">contact@schoolnet.academy</a>
           <span>+242 06 512 44 18</span>
           <Link to="/connexion">Connexion</Link>
+          <Link to="/inscription">Créer un compte</Link>
+          <Link to="/mot-de-passe-oublie">Mot de passe oublié</Link>
+        </div>
+        <div className="lp-footer-newsletter">
+          <strong>Restons en contact</strong>
+          <NewsletterForm source="pied de page" compact />
         </div>
         <div className="copy">© {new Date().getFullYear()} School Net Academy. Tous droits réservés.</div>
       </footer>
+
+      <AiChat />
     </div>
   );
 }

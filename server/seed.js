@@ -168,6 +168,7 @@ export function seed() {
     userIds[u.role] = uid;
     insertUser.run(uid, u.email, password, u.name, u.role, u.phone, u.title, u.color, stamp, stamp);
   }
+  db.prepare("UPDATE users SET tenant_id = 'tnt_demo' WHERE tenant_id IS NULL AND platform_role IS NULL").run();
 
   /* --- Enseignants --- */
   const teacherSpecs = [
@@ -610,6 +611,70 @@ export function seed() {
   [...students, ...uniStudents].forEach((student, index) => {
     setCard.run(cardCode(), stamp, index < 12 ? badge(index) : null, stamp, student.id);
   });
+
+  /* --- Équipe plateforme, abonnés newsletter, notifications --- */
+  const platformStaff = [
+    ['superadmin@schoolnet.academy', 'Ariane Okemba', 'owner', 'Propriétaire de la plateforme'],
+    ['gestion@schoolnet.academy', 'Serge Ikouma', 'manager', 'Gestionnaire'],
+    ['support@schoolnet.academy', 'Léa Mouyabi', 'support', 'Support établissements'],
+    ['finance@schoolnet.academy', 'Boris Nkodia', 'finance', 'Finance & facturation'],
+    ['marketing@schoolnet.academy', 'Grace Loubota', 'marketing', 'Marketing & newsletter'],
+    ['closer@schoolnet.academy', 'Yan Mabiala', 'closer', 'Closer — conversions'],
+  ];
+  const staffIds = [];
+  platformStaff.forEach(([email, name, platformRole, title]) => {
+    const sid = id('usr');
+    staffIds.push({ id: sid, platformRole, name });
+    db.prepare(`INSERT INTO users (id, email, password_hash, name, role, phone, title, avatar_color,
+        platform_role, tenant_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'admin', ?, ?, ?, ?, NULL, ?, ?)`)
+      .run(sid, email, password, name, `+242 06 ${int(100, 999)} ${int(10, 99)} ${int(10, 99)}`,
+        title, '#0f766e', platformRole, stamp, stamp);
+  });
+
+  const subscriberNames = ['Aline Mbemba', 'Rodrigue Ondongo', 'Clarisse Mavoungou', 'David Nzaba',
+    'Esther Bakala', 'Franck Makosso', 'Gisèle Tchibinda', 'Hervé Massamba', 'Ines Nkounkou',
+    'Joël Kiminou', 'Karine Loemba', 'Landry Mabiala', 'Mireille Samba', 'Narcisse Okoyo',
+    'Ornella Bemba', 'Pascal Bantsimba', 'Rachel Itoua', 'Serge Mpassi', 'Tania Nzounza', 'Ulrich Mbaya'];
+  const countries = ['CG', 'CD', 'CI', 'SN', 'CM', 'GA', 'BJ', 'TG', 'FR', 'BE', 'CA', 'US'];
+  const insertSubscriber = db.prepare(`INSERT INTO newsletter_subscribers
+    (id, email, name, country_code, source, status, created_at) VALUES (?, ?, ?, ?, ?, 'actif', ?)`);
+  subscriberNames.forEach((name, index) => {
+    insertSubscriber.run(id('nwl'), `${slug(name)}@${pick(['gmail.com', 'yahoo.fr', 'outlook.com', 'ecole.cg'])}`,
+      name, countries[index % countries.length], pick(['site', 'pied de page', 'salon']), stamp);
+  });
+  db.prepare(`INSERT INTO newsletter_subscribers (id, email, name, country_code, source, status, created_at)
+    VALUES (?, ?, ?, ?, ?, 'desinscrit', ?)`)
+    .run(id('nwl'), 'ancien.abonne@example.com', 'Ancien abonné', 'CG', 'site', stamp);
+
+  const insertCampaign = db.prepare(`INSERT INTO newsletter_campaigns
+    (id, subject, body, audience, status, recipients, sent_at, created_by, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  insertCampaign.run(id('nwc'), 'Rentrée : les nouvelles fonctions de School Net Academy',
+    "Bonjour,\n\nCette rentrée apporte les cartes scolaires à QR code et badge NFC, le pointage sans contact, les SMS aux parents et un assistant IA.\n\nToute l'équipe reste disponible pour une démonstration.\n\n— L'équipe School Net Academy",
+    'abonnes', 'envoyee', 20, iso(-12, 9), staffIds[4].id, stamp);
+  insertCampaign.run(id('nwc'), 'Offre Pro : —20 % pour les universités',
+    "Bonjour,\n\nLes établissements d'enseignement supérieur bénéficient de 20 % de remise sur l'offre Université jusqu'à la fin du mois.\n\nRépondez à cet e-mail pour réserver un créneau.",
+    'abonnes', 'brouillon', 0, null, staffIds[4].id, stamp);
+
+  const insertNotification = db.prepare(`INSERT INTO notifications
+    (id, user_id, tenant_id, kind, title, body, link, read_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  insertNotification.run(id('ntf'), userIds.admin, 'tnt_demo', 'systeme',
+    "Bienvenue sur votre espace", "Votre abonnement Université est actif jusqu'à la fin de l'année scolaire.",
+    '/app/abonnement', null, stamp);
+  insertNotification.run(id('ntf'), userIds.parent, 'tnt_demo', 'paiement',
+    'Paiement reçu : 45 000 FCFA', 'Scolarité — Mobile Money. Reçu PAY-2026-0042.', '/app/paiements', null, stamp);
+  insertNotification.run(id('ntf'), userIds.parent, 'tnt_demo', 'inscription',
+    'Carte scolaire disponible', "La carte d'identité scolaire de votre enfant est prête (QR + NFC).",
+    '/app/mes-enfants', null, stamp);
+
+  const insertSms = db.prepare(`INSERT INTO sms_outbox
+    (id, tenant_id, to_number, body, status, provider, error, created_at, sent_at)
+    VALUES (?, 'tnt_demo', ?, ?, ?, ?, NULL, ?, ?)`);
+  insertSms.run(id('sms'), '+242 06 580 82 65',
+    "School Net Academy : paiement de 45000 FCFA recu (Scolarite). Merci !", 'simule', 'journal', iso(-1, 10), null);
+  insertSms.run(id('sms'), '+242 06 512 44 18',
+    "School Net Academy : nouvelle inscription enregistree en 6eme A.", 'simule', 'journal', iso(-2, 8), null);
 
   return {
     users: users.length + 0,

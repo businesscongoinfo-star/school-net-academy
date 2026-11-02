@@ -7,6 +7,98 @@ const DB_FILE = process.env.DB_FILE || path.join(DATA_DIR, 'school-net.db');
 
 fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
 
+
+const PLATFORM_SCHEMA = `
+CREATE TABLE IF NOT EXISTS tenants (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'ecole',
+  country TEXT NOT NULL,
+  country_code TEXT NOT NULL,
+  currency TEXT NOT NULL,
+  email TEXT,
+  phone TEXT,
+  status TEXT NOT NULL DEFAULT 'essai',
+  plan TEXT,
+  trial_ends_at TEXT,
+  seats INTEGER NOT NULL DEFAULT 12,
+  owner_id TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id TEXT PRIMARY KEY,
+  reference TEXT NOT NULL UNIQUE,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  plan TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  currency TEXT NOT NULL,
+  method TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'paye',
+  period_start TEXT NOT NULL,
+  period_end TEXT NOT NULL,
+  payer_phone TEXT,
+  note TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT,
+  country_code TEXT,
+  source TEXT,
+  status TEXT NOT NULL DEFAULT 'actif',
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS newsletter_campaigns (
+  id TEXT PRIMARY KEY,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  audience TEXT NOT NULL DEFAULT 'abonnes',
+  status TEXT NOT NULL DEFAULT 'brouillon',
+  recipients INTEGER NOT NULL DEFAULT 0,
+  sent_at TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  tenant_id TEXT,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT,
+  link TEXT,
+  read_at TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sms_outbox (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT,
+  to_number TEXT NOT NULL,
+  body TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'simule',
+  provider TEXT,
+  error TEXT,
+  created_at TEXT NOT NULL,
+  sent_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  token TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL
+);
+`;
+
 export const db = new DatabaseSync(DB_FILE);
 db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
@@ -303,6 +395,17 @@ export function migrate() {
   ensureColumn('students', 'nfc_tag', 'TEXT');
   ensureColumn('students', 'card_issued_at', 'TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS idx_students_program ON students(program_id);');
+  // Plateforme multi-établissements (super administration, abonnements, agents)
+  ensureColumn('users', 'platform_role', 'TEXT');
+  ensureColumn('users', 'tenant_id', 'TEXT');
+  ensureColumn('users', 'last_login_at', 'TEXT');
+  ensureColumn('students', 'tenant_id', 'TEXT');
+  db.exec(PLATFORM_SCHEMA);
+  ensureColumn('tenants', 'owner_id', 'TEXT');
+  ensureColumn('subscriptions', 'amount_fcfa', 'INTEGER');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at);');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_sms_tenant ON sms_outbox(tenant_id, created_at);');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_students_card ON students(card_code) WHERE card_code IS NOT NULL;');
   db.exec('CREATE INDEX IF NOT EXISTS idx_students_nfc ON students(nfc_tag) WHERE nfc_tag IS NOT NULL;');
 }

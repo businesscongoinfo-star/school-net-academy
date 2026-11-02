@@ -30,9 +30,12 @@ Mot de passe commun : **`demo1234`**
 
 | Profil | Identifiant | Accès |
 | --- | --- | --- |
-| Direction | `direction@schoolnet.academy` | Accès complet à tous les modules |
+| Direction | `direction@schoolnet.academy` | Accès complet à tous les modules + abonnement |
 | Enseignant | `prof.mbemba@schoolnet.academy` | Élèves, classes, résultats, cours, annonces |
 | Parent | `parent.ondongo@schoolnet.academy` | Ses 2 enfants, paiements, résultats, annonces |
+| Super admin | `superadmin@schoolnet.academy` | Espace `/plateforme` : établissements, équipe, abonnements, newsletter, SMS |
+| Gestionnaire | `gestion@schoolnet.academy` | Plateforme complète sauf journal SMS filtré |
+| Support / Financier / Marketeur / Closer | `support@` · `finance@` · `marketing@` · `closer@schoolnet.academy` | Accès restreints selon le rôle |
 
 Sur l'écran de connexion, trois boutons permettent de se connecter en un clic avec
 chacun de ces profils.
@@ -48,6 +51,19 @@ chacun de ces profils.
 - Un parent ne voit strictement que les données de ses enfants (élèves, paiements, notes,
   fil d'activité, échéances).
 - Gestion du profil et du mot de passe, déconnexion.
+- **Mot de passe oublié** : lien à usage unique valable 30 minutes (`/mot-de-passe-oublie`).
+- **Connexion sociale** Google / Facebook (OAuth 2.0) en complément de l'e-mail.
+
+### Plateforme multi-établissements
+- Inscription en libre-service (`/inscription`) : établissement, **pays parmi la liste complète du
+  monde**, devise déduite automatiquement, offre choisie, compte de direction.
+- **Essai gratuit de 7 jours** puis blocage de l'accès (HTTP 402) et redirection vers
+  `/app/abonnement` : Mobile Money, carte bancaire, virement ou espèces.
+- **Super administration** `/plateforme` avec rôles serveur : `owner`, `manager`, `support`,
+  `finance`, `marketing`, `closer` — chacun ne voit que ses onglets.
+- **Newsletter** : formulaire public, base d'abonnés, studio de campagnes et envoi.
+- **Notifications** in-app + **SMS aux parents** à l'inscription d'un élève et à chaque paiement.
+- **Assistant IA** « School Net IA » (`OPENAI_API_KEY`), avec repli local hors ligne.
 
 ### Tableau de bord
 - KPI contextuels par rôle (effectifs, encaissements 30 jours, reste à recouvrer, moyenne).
@@ -140,7 +156,7 @@ configuration CORS, des URL relatives partout.
 | `npm run seed:reset` | Efface et régénère les données de démonstration |
 | `npm run typecheck` | Vérification TypeScript de l'interface |
 | `node scripts/smoke.mjs` | Test de rendu de toutes les pages avec les données réelles |
-| `npm run audit` | Recette fonctionnelle de l'API : 87 vérifications (CRUD, droits, erreurs) |
+| `npm run audit` | Recette fonctionnelle de l'API : 114 vérifications (CRUD, droits, plateforme, erreurs) |
 | `npm run check` | Enchaîne typecheck + build + rendu des pages + audit API |
 
 ### Développement avec rechargement à chaud

@@ -10,6 +10,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
   setUser: (user: User | null) => void;
+  refresh: () => Promise<User | null>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -52,9 +53,19 @@ export function AuthProvider({ children, initialUser = null }: { children: React
     }
   }, [queryClient]);
 
+  const refresh = useCallback(async () => {
+    try {
+      const data = await get<{ user: User }>('/auth/me');
+      setUser(data.user);
+      return data.user;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const value = useMemo(
-    () => ({ user, loading, login, logout, setUser }),
-    [user, loading, login, logout],
+    () => ({ user, loading, login, logout, setUser, refresh }),
+    [user, loading, login, logout, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

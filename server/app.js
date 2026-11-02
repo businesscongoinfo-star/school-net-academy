@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 import { migrate, isEmpty } from './db.js';
 import { seed, resetDatabase } from './seed.js';
-import { requireAuth, verifyPassword, createSession, hashPassword } from './auth.js';
+import { requireAuth, verifyPassword, createSession, hashPassword, userFromRequest } from './auth.js';
 import { recentActivity } from './helpers.js';
 import { get as dbGet } from './db.js';
 import { requestLogger, recordRequest as requestLoggerReport, recent as recentRequests } from './diagnostics.js';
@@ -30,16 +30,40 @@ import scheduleRoutes from './routes/schedules.js';
 import libraryRoutes from './routes/library.js';
 import attendanceRoutes from './routes/attendance.js';
 import cardRoutes from './routes/cards.js';
+import platformRoutes, { ensurePlatformSeed } from './routes/platform.js';
+import notificationRoutes from './routes/notifications.js';
+import newsletterRoutes from './routes/newsletter.js';
+import aiRoutes from './routes/ai.js';
+import { tenantOf, accessState } from './platform.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(__dirname, '..', 'web', 'dist');
 const PORT = Number(process.env.PORT || 3000);
 
 migrate();
+ensurePlatformSeed();
 if (isEmpty() || process.env.SEED === 'force') {
   if (process.env.SEED === 'force') resetDatabase();
   console.log('→ Initialisation des données de démonstration…');
   console.log('  ', seed());
+}
+
+/**
+ * Mur d'abonnement : quand l'essai gratuit est terminé (ou le compte suspendu),
+ * les routes métier répondent 402 et le front redirige vers l'espace d'abonnement.
+ */
+function tenantGate(req, res, next) {
+  if (!req.user?.tenantId) return next();
+  const access = accessState(tenantOf(req.user));
+  if (access.blocked) {
+    res.status(402).json({
+      error: "Votre essai gratuit est terminé. Choisissez une offre pour retrouver l'accès.",
+      code: 'ABONNEMENT_REQUIS',
+      access,
+    });
+    return;
+  }
+  next();
 }
 
 const app = express();
@@ -174,25 +198,37 @@ app.post('/api/diagnostics/echo', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 
-app.use('/api/dashboard', requireAuth, dashboardRoutes);
-app.use('/api/students', requireAuth, studentRoutes);
-app.use('/api/classes', requireAuth, classRoutes);
-app.use('/api/teachers', requireAuth, teacherRoutes);
-app.use('/api/admissions', requireAuth, admissionRoutes);
-app.use('/api/payments', requireAuth, paymentRoutes);
-app.use('/api/courses', requireAuth, courseRoutes);
-app.use('/api/announcements', requireAuth, announcementRoutes);
-app.use('/api/grades', requireAuth, gradeRoutes);
-app.use('/api/meta', requireAuth, metaRoutes);
-app.use('/api/faculties', requireAuth, facultiesRouter);
-app.use('/api/programs', requireAuth, programsRouter);
-app.use('/api/course-units', requireAuth, unitsRouter);
-app.use('/api/schedules', requireAuth, scheduleRoutes);
-app.use('/api/library', requireAuth, libraryRoutes);
-app.use('/api/attendance', requireAuth, attendanceRoutes);
-app.use('/api/cards', requireAuth, cardRoutes);
+app.use('/api/dashboard', requireAuth, tenantGate, dashboardRoutes);
+app.use('/api/students', requireAuth, tenantGate, studentRoutes);
+app.use('/api/classes', requireAuth, tenantGate, classRoutes);
+app.use('/api/teachers', requireAuth, tenantGate, teacherRoutes);
+app.use('/api/admissions', requireAuth, tenantGate, admissionRoutes);
+app.use('/api/payments', requireAuth, tenantGate, paymentRoutes);
+app.use('/api/courses', requireAuth, tenantGate, courseRoutes);
+app.use('/api/announcements', requireAuth, tenantGate, announcementRoutes);
+app.use('/api/grades', requireAuth, tenantGate, gradeRoutes);
+app.use('/api/meta', requireAuth, tenantGate, metaRoutes);
+app.use('/api/faculties', requireAuth, tenantGate, facultiesRouter);
+app.use('/api/programs', requireAuth, tenantGate, programsRouter);
+app.use('/api/course-units', requireAuth, tenantGate, unitsRouter);
+app.use('/api/schedules', requireAuth, tenantGate, scheduleRoutes);
+app.use('/api/library', requireAuth, tenantGate, libraryRoutes);
+app.use('/api/attendance', requireAuth, tenantGate, attendanceRoutes);
+app.use('/api/cards', requireAuth, tenantGate, cardRoutes);
 
-app.get('/api/activity', requireAuth, (req, res) => {
+/* ------------------- Plateforme, équipe, facturation ------------------- */
+// Authentification facultative : la plateforme contient des routes publiques
+// (catalogue, inscription d'un établissement) et des routes réservées à l'équipe.
+app.use('/api/platform', (req, res, next) => {
+  const user = userFromRequest(req);
+  if (user) req.user = user;
+  next();
+}, platformRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/newsletter', newsletterRoutes);
+app.use('/api/ai', aiRoutes);
+
+app.get('/api/activity', requireAuth, tenantGate, (req, res) => {
   res.json({ items: recentActivity(12) });
 });
 

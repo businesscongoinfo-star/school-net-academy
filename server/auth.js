@@ -35,7 +35,7 @@ function verifyToken(token) {
 
 function selectUser(userId) {
   return get(
-    `SELECT id, email, name, role, phone, title, avatar_color
+    `SELECT id, email, name, role, phone, title, avatar_color, platform_role, tenant_id
        FROM users WHERE id = ?`,
     userId,
   );
@@ -50,6 +50,8 @@ function toUser(row) {
     phone: row.phone,
     title: row.title,
     avatarColor: row.avatar_color,
+    platformRole: row.platform_role ?? null,
+    tenantId: row.tenant_id ?? null,
   };
 }
 
@@ -121,7 +123,8 @@ export function userFromRequest(req) {
   }
 
   const row = get(
-    `SELECT u.id, u.email, u.name, u.role, u.phone, u.title, u.avatar_color, s.expires_at
+    `SELECT u.id, u.email, u.name, u.role, u.phone, u.title, u.avatar_color,
+            u.platform_role, u.tenant_id, s.expires_at
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token = ?`,
     token,

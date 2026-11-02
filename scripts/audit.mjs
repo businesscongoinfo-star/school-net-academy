@@ -91,6 +91,10 @@ async function login(role) {
 const isoDate = (offsetDays = 0) =>
   new Date(Date.now() + offsetDays * 86400000).toISOString().slice(0, 10);
 
+let superClient = null;
+let signupClient = null;
+let signupTenantId = null;
+
 async function main() {
   console.log(`\n🔎 Audit School Net Academy → ${BASE}\n`);
 
@@ -730,6 +734,241 @@ async function main() {
     if (!parent) throw new Error('compte parent indisponible');
     const res = await parent.get('/api/cards');
     expect(res.status === 403, `statut ${res.status}`);
+  });
+
+
+  // ─── Plateforme, abonnements, équipe, newsletter, IA ─────────────────────
+  const stamp = Date.now().toString().slice(-6);
+
+  await check('Plateforme', 'GET /api/platform/catalog (public)', async () => {
+    const json = await admin.ok('GET', '/api/platform/catalog?currency=CD');
+    expect(Array.isArray(json.plans) && json.plans.length === 3, 'offres manquantes');
+    expect(json.trialDays === 7, 'essai différent de 7 jours');
+    expect(json.plans[0].localCurrency === 'CD', 'devise locale non appliquée');
+    return `${json.plans.length} offres · ${Object.keys(json.rates ?? {}).length} devises`;
+  });
+
+  await check('Plateforme', 'Inscription établissement → essai 7 jours', async () => {
+    const res = await new Client('signup').post('/api/platform/signup', {
+      schoolName: `École Audit ${stamp}`,
+      kind: 'universite',
+      country: 'RD Congo',
+      countryCode: 'CD',
+      currency: 'CDF',
+      adminName: 'Audit Direction',
+      email: `audit.${stamp}@ecole-test.cd`,
+      password: 'motdepasse123',
+      phone: '+243 81 000 00 00',
+      plan: 'pro',
+      newsletter: true,
+    });
+    expect(res.status === 201 || res.status === 200, `statut ${res.status} ${res.raw.slice(0, 120)}`);
+    expect(res.json.access?.status === 'essai', 'statut d’accès inattendu');
+    expect(res.json.access?.daysLeft === 7 || res.json.access?.daysLeft === 6, `jours restants : ${res.json.access?.daysLeft}`);
+    expect(res.json.user?.tenant?.currency === 'CDF', 'devise de l’établissement non conservée');
+    const newClient = new Client('nouveau');
+    newClient.cookie = res.headers.get('set-cookie').split(';')[0];
+    const students = await newClient.get('/api/students');
+    expect(students.status === 200, `accès aux données pendant l’essai : ${students.status}`);
+    // mémorise pour les vérifications suivantes
+    signupClient = newClient;
+    signupTenantId = res.json.user.tenant.id;
+    return `${res.json.user.tenant.name} · ${res.json.user.tenant.currency}`;
+  });
+
+  await check('Plateforme', 'Connexion super administrateur', async () => {
+    const res = await new Client('super').post('/api/auth/login', {
+      email: 'superadmin@schoolnet.academy', password: PASSWORD,
+    });
+    expect(res.status === 200, `statut ${res.status}`);
+    expect(res.json.user.platformRole === 'owner', 'rôle plateforme absent');
+    superClient = new Client('super');
+    superClient.cookie = res.headers.get('set-cookie').split(';')[0];
+    return `${res.json.user.name} (${res.json.user.platformRole})`;
+  });
+
+  await check('Plateforme', 'GET /api/platform/overview', async () => {
+    const json = await superClient.ok('GET', '/api/platform/overview');
+    expect(json.kpis?.tenants >= 2, 'compteur d’établissements incohérent');
+    expect(Array.isArray(json.staff) && json.staff.length >= 1, 'équipe absente');
+    return `${json.kpis.tenants} établissements · MRR ${json.kpis.mrr} FCFA`;
+  });
+
+  await check('Plateforme', 'Liste des établissements filtrée', async () => {
+    const json = await superClient.ok('GET', '/api/platform/tenants?status=actif');
+    expect(Array.isArray(json.items), 'liste absente');
+    expect(json.items.every((tenant) => tenant.status === 'actif'), 'filtre de statut non appliqué');
+    const search = await superClient.ok('GET', '/api/platform/tenants?search=Audit');
+    expect(search.items.length >= 1, 'recherche sans résultat');
+    return `${json.items.length} actifs · recherche ${search.items.length}`;
+  });
+
+  await check('Plateforme', 'Nouvel agent + droits limités (RBAC)', async () => {
+    const created = await superClient.ok('POST', '/api/platform/staff', {
+      name: `Agent Audit ${stamp}`,
+      email: `agent.${stamp}@schoolnet.academy`,
+      platformRole: 'support',
+    }, 201);
+    const password = created.temporaryPassword;
+    expect(password, 'mot de passe temporaire absent');
+    const agent = new Client('agent');
+    const session = await agent.post('/api/auth/login', { email: `agent.${stamp}@schoolnet.academy`, password });
+    expect(session.status === 200, `connexion agent → ${session.status}`);
+    expect(session.json.user.platformRole === 'support', 'rôle non appliqué');
+    agent.cookie = session.headers.get('set-cookie').split(';')[0];
+    const allowed = await agent.get('/api/platform/staff');
+    expect(allowed.status === 200, `staff → ${allowed.status}`);
+    const denied = await agent.get('/api/platform/subscriptions');
+    expect(denied.status === 403, `abonnements autorisés à tort → ${denied.status}`);
+    const updated = await superClient.ok('PATCH', `/api/platform/staff/${created.member.id}`, { platformRole: 'finance' });
+    expect(updated.ok === true, 'changement de rôle refusé');
+    await superClient.ok('DELETE', `/api/platform/staff/${created.member.id}`);
+    const gone = await agent.get('/api/platform/staff');
+    expect(gone.status === 401 || gone.status === 403, `agent supprimé toujours actif → ${gone.status}`);
+    return 'support → finance → suppression';
+  });
+
+  await check('Plateforme', 'Parent interdit sur la plateforme → 403', async () => {
+    if (!parent) throw new Error('compte parent indisponible');
+    const res = await parent.get('/api/platform/overview');
+    expect(res.status === 403, `statut ${res.status}`);
+  });
+
+  await check('Abonnement', 'GET /api/platform/billing (essai)', async () => {
+    const json = await signupClient.ok('GET', '/api/platform/billing');
+    expect(json.access?.status === 'essai', 'essai non reconnu');
+    expect(json.plans?.length === 3, 'offres absentes');
+    expect(json.plans[0].localPrice > 0, 'prix local non converti');
+    return `${json.currency} · ${json.plans.length} offres`;
+  });
+
+  await check('Abonnement', 'Paiement self-service → accès actif', async () => {
+    const json = await signupClient.ok('POST', '/api/platform/billing/pay', {
+      plan: 'pro', method: 'mobile_money', phone: '+243 81 000 00 00',
+    }, 201);
+    expect(json.subscription?.reference?.startsWith('SUB-'), 'référence de facture absente');
+    expect(json.subscription.amount > 0, 'montant nul');
+    expect(json.tenant?.status === 'actif', 'établissement non activé');
+    const billing = await signupClient.ok('GET', '/api/platform/billing');
+    expect(billing.access?.blocked === false, 'accès toujours bloqué');
+    expect(billing.invoices.length >= 1, 'facture non listée');
+    return `${json.subscription.reference} · ${json.subscription.amount} ${json.subscription.currency}`;
+  });
+
+  await check('Abonnement', 'Établissement suspendu → 402 ABONNEMENT_REQUIS', async () => {
+    await superClient.ok('PATCH', `/api/platform/tenants/${signupTenantId}`, { status: 'suspendu' });
+    const blocked = await signupClient.get('/api/students');
+    expect(blocked.status === 402, `statut ${blocked.status}`);
+    expect(blocked.json?.code === 'ABONNEMENT_REQUIS', 'code d’erreur absent');
+    await superClient.ok('PATCH', `/api/platform/tenants/${signupTenantId}`, { status: 'actif' });
+    const reopened = await signupClient.get('/api/students');
+    expect(reopened.status === 200, `réouverture → ${reopened.status}`);
+    return 'blocage puis réouverture immédiate';
+  });
+
+  await check('Abonnement', 'Abonnement activé depuis la plateforme', async () => {
+    const json = await superClient.ok('POST', `/api/platform/tenants/${signupTenantId}/subscribe`, {
+      plan: 'universite', method: 'virement',
+    }, 201);
+    expect(json.subscription?.plan === 'universite', 'offre non appliquée');
+    expect(json.tenant?.plan === 'universite', 'établissement non mis à jour');
+    const list = await superClient.ok('GET', '/api/platform/subscriptions');
+    expect(list.items.length >= 1 && list.stats.total > 0, 'historique vide');
+    return `${list.items.length} factures · ${list.stats.total} FCFA`;
+  });
+
+  await check('Newsletter', 'Inscription publique + audience', async () => {
+    const res = await new Client('nwl').post('/api/newsletter/subscribe', {
+      email: `abonne.${stamp}@ecole-test.cd`, name: 'Abonné Audit', countryCode: 'CG', source: 'audit',
+    });
+    expect(res.status === 201 || res.status === 200, `statut ${res.status}`);
+    const again = await new Client('nwl').post('/api/newsletter/subscribe', { email: `abonne.${stamp}@ecole-test.cd` });
+    expect(again.json?.already === true, 'double inscription non signalée');
+    const json = await superClient.ok('GET', '/api/platform/newsletter');
+    expect(json.subscribers.some((item) => item.email === `abonne.${stamp}@ecole-test.cd`), 'abonné absent de la liste');
+    return `${json.stats.actifs} abonnés actifs`;
+  });
+
+  await check('Newsletter', 'Création et envoi d’une campagne', async () => {
+    const created = await superClient.ok('POST', '/api/platform/newsletter', {
+      subject: `Audit ${stamp} — nouveautés`, body: 'Message de test envoyé par le script d’audit.', audience: 'abonnes',
+    }, 201);
+    expect(created.campaign?.status === 'brouillon', 'campagne non en brouillon');
+    const sent = await superClient.ok('POST', `/api/platform/newsletter/${created.campaign.id}/send`, {});
+    expect(sent.recipients > 0, 'aucun destinataire');
+    const list = await superClient.ok('GET', '/api/platform/newsletter');
+    const campaign = list.campaigns.find((item) => item.id === created.campaign.id);
+    expect(campaign?.status === 'envoyee', 'campagne non marquée envoyée');
+    return `${sent.recipients} destinataires`;
+  });
+
+  await check('Notifications & SMS', 'Paiement → notification + SMS aux parents', async () => {
+    const students = await admin.ok('GET', '/api/students');
+    const before = await superClient.ok('GET', '/api/platform/sms');
+    const payment = await admin.ok('POST', '/api/payments', {
+      studentId: students.items[0].id, amount: 30000, type: 'Cantine', method: 'Mobile Money',
+    }, 201);
+    expect(payment.payment?.reference, 'paiement non créé');
+    const after = await superClient.ok('GET', '/api/platform/sms');
+    expect(after.items.length > before.items.length, 'aucun SMS journalisé');
+    const inbox = await parent.ok('GET', '/api/notifications');
+    expect(inbox.items.some((item) => item.kind === 'paiement'), 'notification parent absente');
+    expect(inbox.unread > 0, 'compteur de non-lues à zéro');
+    return `${after.items.length} SMS · ${inbox.unread} non lues`;
+  });
+
+  await check('Notifications & SMS', 'Marquer lu, tout lire, supprimer', async () => {
+    const inbox = await admin.ok('GET', '/api/notifications');
+    expect(inbox.items.length > 0, 'aucune notification pour la direction');
+    const target = inbox.items[0];
+    await admin.ok('POST', `/api/notifications/${target.id}/read`, {});
+    const after = await admin.ok('GET', '/api/notifications');
+    expect(after.items.find((item) => item.id === target.id)?.readAt, 'notification non marquée lue');
+    await admin.ok('POST', '/api/notifications/read-all', {});
+    const all = await admin.ok('GET', '/api/notifications');
+    expect(all.unread === 0, `restant ${all.unread} non lues`);
+    await admin.ok('DELETE', `/api/notifications/${target.id}`);
+    return `${inbox.items.length} notifications traitées`;
+  });
+
+  await check('Notifications & SMS', 'Journal SMS accessible au financeur', async () => {
+    const json = await superClient.ok('GET', '/api/platform/sms');
+    expect(Array.isArray(json.items), 'journal absent');
+    expect(typeof json.configured === 'boolean', 'indicateur de configuration manquant');
+    return `${json.items.length} messages · ${json.configured ? 'opérateur' : 'simulation'}`;
+  });
+
+  await check('Assistant IA', 'POST /api/ai/chat répond', async () => {
+    const json = await admin.ok('POST', '/api/ai/chat', {
+      messages: [{ role: 'user', content: 'Combien coûte un abonnement ?' }],
+    });
+    expect(typeof json.reply === 'string' && json.reply.length > 20, 'réponse vide');
+    expect(['openai', 'local'].includes(json.source), 'source inconnue');
+    return `${json.source} · ${json.reply.length} caractères`;
+  });
+
+  await check('Mot de passe', 'Parcours oubli → réinitialisation', async () => {
+    const client = new Client('oubli');
+    const forgot = await client.post('/api/auth/forgot', { email: ACCOUNTS.teacher });
+    expect(forgot.status === 200, `statut ${forgot.status}`);
+    const token = String(forgot.json.resetPath ?? '').split('token=')[1];
+    expect(token, 'lien de réinitialisation absent');
+    const reset = await client.post('/api/auth/reset', { token, password: 'nouveau.mot.de.passe' });
+    expect(reset.status === 200, `réinitialisation → ${reset.status}`);
+    const relogin = await client.post('/api/auth/login', { email: ACCOUNTS.teacher, password: 'nouveau.mot.de.passe' });
+    expect(relogin.status === 200, 'connexion avec le nouveau mot de passe impossible');
+    await client.post('/api/auth/reset', { token, password: PASSWORD });
+    await client.post('/api/auth/login', { email: ACCOUNTS.teacher, password: PASSWORD });
+    const reused = await client.post('/api/auth/reset', { token, password: 'autre.mot.de.passe' });
+    expect(reused.status === 400, `lien réutilisé → ${reused.status}`);
+    return 'token à usage unique';
+  });
+
+  await check('Mot de passe', 'Connexion sociale non configurée → 501 explicite', async () => {
+    const res = await new Client('oauth').post('/api/auth/oauth/facebook', {});
+    expect(res.status === 501, `statut ${res.status}`);
+    expect(res.json?.hint, 'aide absente');
+    return res.json.configured === false ? 'configuration attendue' : '';
   });
 
   // ─── Erreurs & robustesse ────────────────────────────────────────────────

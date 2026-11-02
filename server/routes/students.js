@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { all, get, run, now, uid } from '../db.js';
 import { parseBody, asyncHandler, notFound, conflict, parentScope, termNow, forbidden, badRequest } from '../helpers.js';
 import { issueCard } from './cards.js';
+import { notifyGuardian } from '../platform.js';
 
 const router = Router();
 
@@ -175,6 +176,14 @@ router.post('/', asyncHandler(async (req, res) => {
   );
   // Chaque nouvel élève reçoit immédiatement sa carte (QR + code-barres + badge NFC).
   issueCard(id);
+  run('UPDATE students SET tenant_id = ? WHERE id = ?', req.user.tenantId ?? null, id);
+  // Les parents sont prévenus par notification et par SMS.
+  notifyGuardian(id, {
+    kind: 'inscription',
+    title: `Nouvelle inscription : ${data.firstName} ${data.lastName}`,
+    body: `La fiche de ${data.firstName} ${data.lastName} vient d'être créée. Sa carte scolaire est disponible.`,
+    sms: `School Net Academy : ${data.firstName} ${data.lastName} est bien inscrit(e). Consultez l'espace parent pour la suite.`,
+  }).catch(() => undefined);
   const created = get('SELECT * FROM students WHERE id = ?', id);
   res.status(201).json({ student: created });
 }));

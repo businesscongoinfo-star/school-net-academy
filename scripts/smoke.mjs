@@ -19,8 +19,20 @@ if (!login.ok) throw new Error('login failed ' + login.status);
 const cookie = login.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
 const me = await login.json();
 
-const realFetch = async (path) => {
-  const res = await fetch(path.startsWith('http') ? path : `${BASE}${path}`, { headers: { cookie } });
+// Session super administrateur : nécessaire pour les routes /api/platform réservées.
+const superLogin = await fetch(`${BASE}/api/auth/login`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ email: 'superadmin@schoolnet.academy', password: 'demo1234' }),
+});
+const superCookie = superLogin.ok
+  ? superLogin.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
+  : cookie;
+
+const realFetch = async (path, asSuper = false) => {
+  const res = await fetch(path.startsWith('http') ? path : `${BASE}${path}`, {
+    headers: { cookie: asSuper ? superCookie : cookie },
+  });
   if (!res.ok) throw new Error(`${path} -> ${res.status}`);
   return res.json();
 };
@@ -55,6 +67,11 @@ const pages = {
   Attendance: '/src/pages/Attendance.tsx',
   Cards: '/src/pages/Cards.tsx',
   NotFound: '/src/pages/NotFound.tsx',
+  Signup: '/src/pages/Signup.tsx',
+  Billing: '/src/pages/Billing.tsx',
+  Platform: '/src/pages/Platform.tsx',
+  ForgotPassword: '/src/pages/Password.tsx',
+  ResetPassword: '/src/pages/Password.tsx',
 };
 
 const meta = await realFetch('/api/meta');
@@ -76,6 +93,15 @@ const books = await realFetch('/api/library/books');
 const loans = await realFetch('/api/library/loans');
 const attendance = await realFetch('/api/attendance?date=' + new Date().toISOString().slice(0, 10));
 const attendanceToday = attendance;
+const billing = await realFetch('/api/platform/billing');
+const catalog = await realFetch('/api/platform/catalog');
+const overview = await realFetch('/api/platform/overview', true);
+const tenants = await realFetch('/api/platform/tenants', true);
+const staff = await realFetch('/api/platform/staff', true);
+const subscriptions = await realFetch('/api/platform/subscriptions', true);
+const newsletter = await realFetch('/api/platform/newsletter', true);
+const sms = await realFetch('/api/platform/sms', true);
+const notifications = await realFetch('/api/notifications');
 const noFilters = { search: '', classFilter: '', statusFilter: '', typeFilter: '' };
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
@@ -104,6 +130,15 @@ const seed = [
   [['loans', '', ''], loans],
   [['attendance', new Date().toISOString().slice(0, 10), '', '', 'Journée'], attendanceToday],
   [['me'], { user: me.user }],
+  [['billing'], billing],
+  [['catalog'], catalog],
+  [['platform', 'overview'], overview],
+  [['platform', 'tenants', '', ''], tenants],
+  [['platform', 'staff'], staff],
+  [['platform', 'subscriptions'], subscriptions],
+  [['platform', 'newsletter'], newsletter],
+  [['platform', 'sms'], sms],
+  [['notifications'], notifications],
 ];
 for (const [key, data] of seed) queryClient.setQueryData(key, data);
 
@@ -128,6 +163,11 @@ const routes = {
   Cards: '/app/cartes',
   Login: '/connexion',
   Landing: '/',
+  Signup: '/inscription',
+  Billing: '/app/abonnement',
+  Platform: '/plateforme',
+  ForgotPassword: '/mot-de-passe-oublie',
+  ResetPassword: '/reinitialiser',
   NotFound: '/nope',
 };
 
@@ -151,7 +191,12 @@ const EXPECTATIONS = {
   Cards: ['Cartes scolaires', 'Pointer par carte'],
   Attendance: ['Présences', 'Exporter'],
   Login: ['Se connecter'],
-  Landing: ['School Net'],
+  Landing: ['School Net', 'Tarifs', 'Newsletter'],
+  Signup: ['Créer mon établissement', 'Pays'],
+  Billing: ['Abonnement', 'Mobile Money', 'Mes reçus'],
+  Platform: ['Super administration', 'Établissements'],
+  ForgotPassword: ['Mot de passe oublié'],
+  ResetPassword: ['Lien invalide'],
 };
 
 let failures = 0;

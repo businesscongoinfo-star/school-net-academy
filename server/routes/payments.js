@@ -4,6 +4,7 @@ import { all, get, run, now, uid } from '../db.js';
 import {
   parseBody, asyncHandler, notFound, forbidden, badRequest, makeReference, stamp, parentScope,
 } from '../helpers.js';
+import { notifyGuardian } from '../platform.js';
 
 const router = Router();
 
@@ -81,7 +82,16 @@ router.post('/', asyncHandler(async (req, res) => {
     data.paidAt ?? (isPaid ? now() : null), data.dueDate ?? null, data.term ?? null, data.note ?? null,
     createdAt, updatedAt,
   );
-  res.status(201).json({ payment: get('SELECT * FROM payments WHERE id = ?', id) });
+  const created = get('SELECT * FROM payments WHERE id = ?', id);
+  // Les parents sont avertis du paiement (notification + SMS).
+  notifyGuardian(data.studentId, {
+    kind: 'paiement',
+    title: `Paiement reçu : ${new Intl.NumberFormat('fr-FR').format(data.amount)} FCFA`,
+    body: `${data.type} — ${data.method}. Reçu ${created.reference}.`,
+    sms: `School Net Academy : paiement de ${data.amount} FCFA recu (${data.type}). Recu ${created.reference}. Merci !`,
+    link: '/app/paiements',
+  }).catch(() => undefined);
+  res.status(201).json({ payment: created });
 }));
 
 router.patch('/:id', asyncHandler(async (req, res) => {

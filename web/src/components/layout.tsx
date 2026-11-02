@@ -2,14 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, GraduationCap, School, ClipboardList, Wallet, BookOpen,
-  Megaphone, Award, Settings, Menu, X, LogOut, ChevronDown, LifeBuoy, Bell, UserRound,
-  Building2, Layers, CalendarDays, Library, UserCheck, CreditCard,
+  Megaphone, Award, Settings, Menu, X, LogOut, ChevronDown, LifeBuoy, UserRound,
+  Building2, Layers, CalendarDays, Library, UserCheck, CreditCard, BadgeDollarSign,
+  ShieldCheck, Sparkles,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAuth } from '../lib/auth';
 import { ROLE_LABEL } from '../lib/labels';
 import { Avatar, IconButton } from './ui';
 import { Logo } from './logo';
+import { NotificationsBell } from './notifications-bell';
+import { AiChat } from './ai-chat';
 
 export interface NavItem {
   to: string;
@@ -52,6 +55,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
       { to: '/app/inscriptions', label: 'Inscriptions', icon: ClipboardList, roles: ['admin'] },
       { to: '/app/paiements', label: 'Paiements', icon: Wallet, roles: ['admin', 'parent'] },
       { to: '/app/resultats', label: 'Résultats', icon: Award, roles: ['admin', 'teacher', 'parent'] },
+      { to: '/app/abonnement', label: 'Abonnement', icon: BadgeDollarSign, roles: ['admin'] },
     ],
   },
   {
@@ -62,6 +66,13 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     ],
   },
 ];
+
+const PLATFORM_SECTION = {
+  title: 'Plateforme',
+  items: [
+    { to: '/plateforme', label: 'Super administration', icon: ShieldCheck, roles: ['admin', 'teacher', 'parent'] },
+  ] as NavItem[],
+};
 
 const ALL_ITEMS = SECTIONS.flatMap((section) => section.items);
 
@@ -87,10 +98,28 @@ export function AppShell() {
   if (!user) return null;
 
   const role = user.role;
-  const current = ALL_ITEMS
+  // Un agent de la plateforme n'est rattaché à aucun établissement : son espace
+  // se limite à la super administration et à ses paramètres.
+  const isPlatformOnly = Boolean(user.platformRole && !user.tenantId);
+  const sections = isPlatformOnly
+    ? [{ title: 'Plateforme', items: [PLATFORM_SECTION.items[0]] }]
+    : user.platformRole
+      ? [...SECTIONS, PLATFORM_SECTION]
+      : SECTIONS;
+  const navItems = [...ALL_ITEMS, ...PLATFORM_SECTION.items];
+  const current = navItems
     .filter((item) => item.roles.includes(role))
     .sort((a, b) => b.to.length - a.to.length)
     .find((item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`));
+
+  const access = user.access;
+  const trialLabel = access?.status === 'essai'
+    ? `Essai · ${access.daysLeft ?? 0} j`
+    : access?.blocked
+      ? 'Abonnement requis'
+      : access?.status === 'actif'
+        ? 'Abonnement actif'
+        : null;
 
   const handleLogout = async () => {
     await logout();
@@ -110,7 +139,7 @@ export function AppShell() {
         </div>
 
         <nav className="sidebar-nav">
-          {SECTIONS.map((section) => {
+          {sections.map((section) => {
             const items = section.items.filter((item) => item.roles.includes(role));
             if (!items.length) return null;
             return (
@@ -131,10 +160,20 @@ export function AppShell() {
             );
           })}
           <div className="sidebar-section">Compte</div>
-          <NavLink to="/app/parametres" className={({ isActive }) => clsx('sidebar-link', isActive && 'active')}>
+          <NavLink
+            to={isPlatformOnly ? '/plateforme/parametres' : '/app/parametres'}
+            className={({ isActive }) => clsx('sidebar-link', isActive && 'active')}
+          >
             <Settings size={17} />
             <span>Paramètres</span>
           </NavLink>
+          {trialLabel && (
+            <NavLink to="/app/abonnement" className={clsx('sidebar-plan', access?.blocked && 'danger')}>
+              <Sparkles size={14} />
+              <span className="grow">{trialLabel}</span>
+              <span className="tiny">Gérer</span>
+            </NavLink>
+          )}
         </nav>
 
         <div className="sidebar-foot">
@@ -187,9 +226,17 @@ export function AppShell() {
             <strong>{current?.label ?? 'Espace'}</strong>
           </div>
           <div className="topbar-actions">
-            <NavLink to="/app/annonces" className="icon-btn" aria-label="Annonces" title="Annonces">
-              <Bell size={17} />
-            </NavLink>
+            {trialLabel && (
+              <NavLink
+                to="/app/abonnement"
+                className={clsx('topbar-plan', access?.blocked && 'danger')}
+                title="Abonnement et facturation"
+              >
+                <BadgeDollarSign size={14} />
+                <span className="hide-sm">{trialLabel}</span>
+              </NavLink>
+            )}
+            <NotificationsBell />
             <div style={{ position: 'relative' }} ref={menuRef}>
               <button className="topbar-user" onClick={() => setMenuOpen((open) => !open)} aria-expanded={menuOpen}>
                 <Avatar name={user.name} color={user.avatarColor} size="sm" />
@@ -206,10 +253,10 @@ export function AppShell() {
                     <div className="tiny muted truncate">{user.email}</div>
                   </div>
                   <div className="sep" />
-                  <button className="item" onClick={() => { setMenuOpen(false); navigate('/app/parametres'); }}>
+                  <button className="item" onClick={() => { setMenuOpen(false); navigate(isPlatformOnly ? '/plateforme/parametres' : '/app/parametres'); }}>
                     <UserRound size={15} /> Mon profil
                   </button>
-                  <button className="item" onClick={() => { setMenuOpen(false); navigate('/app/parametres'); }}>
+                  <button className="item" onClick={() => { setMenuOpen(false); navigate(isPlatformOnly ? '/plateforme/parametres' : '/app/parametres'); }}>
                     <Settings size={15} /> Paramètres
                   </button>
                   <div className="sep" />
@@ -225,6 +272,7 @@ export function AppShell() {
         <main className="page">
           <Outlet />
         </main>
+        <AiChat />
       </div>
     </div>
   );

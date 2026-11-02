@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Eye, EyeOff, Lock, Mail, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Crown, Eye, EyeOff, Lock, Mail, ShieldCheck, Sparkles } from 'lucide-react';
 import { useAuth } from '../lib/auth';
-import { ApiError } from '../lib/api';
+import { ApiError, post } from '../lib/api';
+import { useToast } from '../components/toast';
 import { Logo } from '../components/logo';
 import { Button, Field, Input } from '../components/ui';
 import { Avatar } from '../components/ui';
@@ -11,6 +12,7 @@ const DEMO_ACCOUNTS = [
   { email: 'direction@schoolnet.academy', name: 'Chancelle Mabiala', role: 'Direction', color: '#0f766e' },
   { email: 'prof.mbemba@schoolnet.academy', name: 'Prosper Mbemba', role: 'Enseignant', color: '#b45309' },
   { email: 'parent.ondongo@schoolnet.academy', name: 'Nadège Ondongo', role: 'Parent', color: '#7c3aed' },
+  { email: 'superadmin@schoolnet.academy', name: 'Ariane Okemba', role: 'Super admin', color: '#0e7490' },
 ];
 
 const DEMO_PASSWORD = 'demo1234';
@@ -18,6 +20,7 @@ const DEMO_PASSWORD = 'demo1234';
 export function Login() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
+  const { info } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -27,6 +30,24 @@ export function Login() {
   useEffect(() => {
     if (user) navigate('/app', { replace: true });
   }, [user, navigate]);
+
+  async function social(provider: 'google' | 'facebook') {
+    setError(null);
+    try {
+      const data = await post<{ error?: string; hint?: string; url?: string }>(`/auth/oauth/${provider}`, {});
+      if (data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      info(data.error ?? 'Connexion sociale indisponible.', data.hint);
+    } catch (err) {
+      const detail = (err as ApiError & { details?: { hint?: string } }).details;
+      info(
+        err instanceof ApiError ? err.message : 'Connexion sociale indisponible.',
+        detail?.hint ?? "Configurez GOOGLE_CLIENT_ID / FACEBOOK_APP_ID sur le serveur pour activer la connexion sociale.",
+      );
+    }
+  }
 
   async function submit(nextEmail: string, nextPassword: string, key: string) {
     setError(null);
@@ -78,7 +99,17 @@ export function Login() {
             <ArrowLeft size={14} /> Retour au site
           </Link>
           <h2>Connexion à votre espace</h2>
-          <p className="sub">Utilisez votre adresse e-mail professionnelle pour continuer.</p>
+          <p className="sub">Adresse e-mail ou compte social — un seul espace pour tout gérer.</p>
+
+          <div className="social-row">
+            <button type="button" className="social-btn" onClick={() => social('google')}>
+              <span className="social-icon google">G</span> Google
+            </button>
+            <button type="button" className="social-btn" onClick={() => social('facebook')}>
+              <span className="social-icon facebook">f</span> Facebook
+            </button>
+          </div>
+          <div className="auth-divider">ou avec votre e-mail</div>
 
           <form
             className="stack gap-16 mt-16"
@@ -129,6 +160,10 @@ export function Login() {
                 </button>
               </div>
             </Field>
+            <div className="row gap-8" style={{ justifyContent: 'space-between' }}>
+              <label className="checkbox"><input type="checkbox" defaultChecked /> <span>Rester connecté</span></label>
+              <Link to="/mot-de-passe-oublie" className="link-btn">Mot de passe oublié ?</Link>
+            </div>
             <Button type="submit" variant="primary" size="lg" block loading={pending === 'form'}>
               Se connecter <ArrowRight size={16} />
             </Button>

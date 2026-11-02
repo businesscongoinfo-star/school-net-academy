@@ -27,6 +27,11 @@ const LibraryPage = lazy(() => import('./pages/Library').then((module) => ({ def
 const Attendance = lazy(() => import('./pages/Attendance').then((module) => ({ default: module.Attendance })));
 const Cards = lazy(() => import('./pages/Cards').then((module) => ({ default: module.Cards })));
 const NotFound = lazy(() => import('./pages/NotFound').then((module) => ({ default: module.NotFound })));
+const Signup = lazy(() => import('./pages/Signup').then((module) => ({ default: module.Signup })));
+const Billing = lazy(() => import('./pages/Billing').then((module) => ({ default: module.Billing })));
+const Platform = lazy(() => import('./pages/Platform').then((module) => ({ default: module.Platform })));
+const ForgotPassword = lazy(() => import('./pages/Password').then((module) => ({ default: module.ForgotPassword })));
+const ResetPassword = lazy(() => import('./pages/Password').then((module) => ({ default: module.ResetPassword })));
 
 function Splash() {
   return (
@@ -62,6 +67,11 @@ const TITLES: Record<string, string> = {
   '/app/cours': 'Cours en ligne',
   '/app/annonces': 'Annonces',
   '/app/parametres': 'Paramètres',
+  '/app/abonnement': 'Abonnement',
+  '/inscription': 'Créer mon établissement',
+  '/mot-de-passe-oublie': 'Mot de passe oublié',
+  '/reinitialiser': 'Nouveau mot de passe',
+  '/plateforme': 'Super administration',
 };
 
 /** Met à jour le titre de l'onglet selon la page courante. */
@@ -83,6 +93,24 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/** Redirige vers l'espace d'abonnement dès que l'essai est terminé ou l'accès bloqué. */
+function AccessGate({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const { pathname } = useLocation();
+  const blocked = Boolean(user?.access?.blocked);
+  const allowed = pathname === '/app/abonnement' || pathname === '/app/parametres';
+  if (blocked && !allowed) return <Navigate to="/app/abonnement" replace />;
+  return <>{children}</>;
+}
+
+function PlatformGate({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return <Splash />;
+  if (!user) return <Navigate to="/connexion" replace />;
+  if (!user.platformRole) return <Navigate to="/app" replace />;
+  return <>{children}</>;
+}
+
 function RoleGate({ roles, children }: { roles: string[]; children: ReactNode }) {
   const { user } = useAuth();
   if (!user) return null;
@@ -97,12 +125,28 @@ export function App() {
       <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/connexion" element={<Login />} />
+      <Route path="/inscription" element={page(<Signup />)} />
+      <Route path="/mot-de-passe-oublie" element={page(<ForgotPassword />)} />
+      <Route path="/reinitialiser" element={page(<ResetPassword />)} />
+      <Route
+        path="/plateforme"
+        element={(
+          <PlatformGate>
+            <AppShell />
+          </PlatformGate>
+        )}
+      >
+        <Route index element={page(<Platform />)} />
+        <Route path="parametres" element={page(<Settings />)} />
+      </Route>
 
       <Route
         path="/app"
         element={(
           <RequireAuth>
-            <AppShell />
+            <AccessGate>
+              <AppShell />
+            </AccessGate>
           </RequireAuth>
         )}
       >
@@ -124,6 +168,7 @@ export function App() {
         <Route path="presences" element={page(<RoleGate roles={['admin', 'teacher']}><Attendance /></RoleGate>)} />
         <Route path="cartes" element={page(<RoleGate roles={['admin', 'teacher']}><Cards /></RoleGate>)} />
         <Route path="parametres" element={page(<Settings />)} />
+        <Route path="abonnement" element={page(<Billing />)} />
       </Route>
 
         <Route path="*" element={<Suspense fallback={<Splash />}><NotFound /></Suspense>} />

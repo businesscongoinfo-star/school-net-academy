@@ -16,6 +16,127 @@ const ACCOUNTS: Record<string, User['role']> = {
   'parent.ondongo@schoolnet.academy': 'parent',
 };
 
+/* -------------------------- Données de la plateforme ---------------------- */
+
+const DEMO_TENANT = {
+  id: 'tnt_demo',
+  name: 'School Net Academy',
+  kind: 'mixte',
+  country: 'Congo-Brazzaville',
+  countryCode: 'CG',
+  currency: 'XAF',
+  email: 'direction@schoolnet.academy',
+  phone: '+242 06 512 44 18',
+  status: 'actif',
+  plan: 'universite',
+  seats: 999,
+  trialEndsAt: null as string | null,
+  createdAt: '2025-09-01T08:00:00.000Z',
+};
+
+const DEMO_ACCESS = { status: 'actif', blocked: false, daysLeft: null as number | null };
+
+const DEMO_PLANS = [
+  {
+    id: 'essentiel', name: 'Essentiel', priceFcfa: 15000, price: 15000, currency: 'XAF', period: 'mois',
+    tagline: 'Pour une petite école qui démarre', seats: 3, trialDays: 7,
+    features: ['Élèves, classes, présences', 'Paiements & reçus', 'Cartes scolaires (QR + NFC)', '3 comptes utilisateurs'],
+  },
+  {
+    id: 'pro', name: 'Pro', priceFcfa: 45000, price: 45000, currency: 'XAF', period: 'mois',
+    tagline: "L'offre des établissements complets", seats: 10, trialDays: 7, popular: true,
+    features: ['Tout Essentiel', 'Université : facultés, filières, UE, crédits', 'Emploi du temps & bibliothèque', 'Bulletins, SMS aux parents, notifications', '10 comptes utilisateurs'],
+  },
+  {
+    id: 'universite', name: 'Université', priceFcfa: 120000, price: 120000, currency: 'XAF', period: 'mois',
+    tagline: 'Campus, LMD et grandes structures', seats: 999, trialDays: 7,
+    features: ['Tout Pro', 'Multi-campus & filières illimitées', 'Pointage NFC sur plusieurs portails', 'Support prioritaire & accompagnement', 'Utilisateurs illimités'],
+  },
+];
+
+const DEMO_RATES: Record<string, number> = {
+  XAF: 1, XOF: 1, EUR: 0.001524, USD: 0.0017, GBP: 0.0013, CDF: 4.8, NGN: 2.6,
+  MAD: 0.0167, KES: 0.22, ZAR: 0.031, CAD: 0.00233, AED: 0.00625, CHF: 0.0015,
+};
+
+function demoConvert(amount: number, currency: string) {
+  const rate = DEMO_RATES[currency] ?? 1;
+  const value = amount * rate;
+  if (rate >= 100) return Math.round(value / 100) * 100;
+  if (rate >= 1) return Math.round(value);
+  return Math.round(value * 100) / 100;
+}
+
+/** Complète l'utilisateur de démonstration avec établissement, accès et rôle plateforme. */
+function enrich(user: User | null): User | null {
+  if (!user) return null;
+  return {
+    ...user,
+    tenant: DEMO_TENANT as unknown as User['tenant'],
+    access: DEMO_ACCESS as User['access'],
+    platformRole: user.role === 'admin' ? 'owner' : null,
+  };
+}
+
+function platformStore(data: Json): Json {
+  if (!data.platform) {
+    data.platform = {
+      tenants: [
+        { ...DEMO_TENANT, owner: { name: 'Chancelle Mabiala', email: 'direction@schoolnet.academy' }, users: 4 },
+        {
+          id: 'tnt_essai', name: 'Groupe Scolaire Les Palmiers', kind: 'ecole', country: "Côte d'Ivoire",
+          countryCode: 'CI', currency: 'XOF', email: 'contact@lespalmiers.ci', phone: '+225 07 00 00 00',
+          status: 'essai', plan: null, seats: 10, trialEndsAt: new Date(Date.now() + 4 * 86400000).toISOString(),
+          createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
+          owner: { name: 'Ibrahim Koné', email: 'contact@lespalmiers.ci' }, users: 2,
+        },
+        {
+          id: 'tnt_uni', name: 'Université Marien Ngouabi', kind: 'universite', country: 'Congo-Brazzaville',
+          countryCode: 'CG', currency: 'XAF', email: 'scolarite@umng.cg', phone: '+242 06 100 20 30',
+          status: 'actif', plan: 'universite', seats: 999, trialEndsAt: null,
+          createdAt: new Date(Date.now() - 120 * 86400000).toISOString(),
+          owner: { name: 'Pr. Alphonse Massamba', email: 'scolarite@umng.cg' }, users: 12,
+        },
+      ],
+      staff: [
+        { id: 'usr_super', name: 'Chancelle Mabiala', email: 'direction@schoolnet.academy', platformRole: 'owner', title: 'Propriétaire', createdAt: DEMO_TENANT.createdAt, lastLoginAt: new Date().toISOString() },
+        { id: 'usr_manager', name: 'Serge Ikouma', email: 'gestion@schoolnet.academy', platformRole: 'manager', title: 'Gestionnaire', createdAt: DEMO_TENANT.createdAt, lastLoginAt: new Date(Date.now() - 3600000).toISOString() },
+        { id: 'usr_support', name: 'Léa Mouyabi', email: 'support@schoolnet.academy', platformRole: 'support', title: 'Support', createdAt: DEMO_TENANT.createdAt, lastLoginAt: new Date(Date.now() - 7200000).toISOString() },
+        { id: 'usr_finance', name: 'Boris Nkodia', email: 'finance@schoolnet.academy', platformRole: 'finance', title: 'Finance & facturation', createdAt: DEMO_TENANT.createdAt, lastLoginAt: null },
+        { id: 'usr_marketing', name: 'Grace Loubota', email: 'marketing@schoolnet.academy', platformRole: 'marketing', title: 'Marketing & newsletter', createdAt: DEMO_TENANT.createdAt, lastLoginAt: null },
+        { id: 'usr_closer', name: 'Yan Mabiala', email: 'closer@schoolnet.academy', platformRole: 'closer', title: 'Closer — conversions', createdAt: DEMO_TENANT.createdAt, lastLoginAt: null },
+      ],
+      invoices: [
+        { id: 'sub_demo1', reference: 'SUB-2026-0001', tenantId: 'tnt_uni', tenantName: 'Université Marien Ngouabi', tenantCountry: 'Congo-Brazzaville', plan: 'universite', amount: 120000, amountFcfa: 120000, currency: 'XAF', method: 'mobile_money', status: 'paye', periodStart: new Date(Date.now() - 30 * 86400000).toISOString(), periodEnd: new Date(Date.now() + 335 * 86400000).toISOString(), createdAt: new Date(Date.now() - 30 * 86400000).toISOString() },
+        { id: 'sub_demo2', reference: 'SUB-2026-0002', tenantId: 'tnt_demo', tenantName: 'School Net Academy', tenantCountry: 'Congo-Brazzaville', plan: 'universite', amount: 120000, amountFcfa: 120000, currency: 'XAF', method: 'virement', status: 'paye', periodStart: new Date(Date.now() - 15 * 86400000).toISOString(), periodEnd: new Date(Date.now() + 350 * 86400000).toISOString(), createdAt: new Date(Date.now() - 15 * 86400000).toISOString() },
+      ],
+      subscribers: [
+        'Aline Mbemba', 'Rodrigue Ondongo', 'Clarisse Mavoungou', 'David Nzaba', 'Esther Bakala',
+        'Franck Makosso', 'Gisèle Tchibinda', 'Hervé Massamba', 'Ines Nkounkou', 'Joël Kiminou',
+      ].map((name, index) => ({
+        id: `nwl_${index}`, email: `${name.toLowerCase().replace(/[^a-z]+/g, '.')}@example.cg`, name,
+        countryCode: ['CG', 'CD', 'CI', 'SN', 'CM'][index % 5], source: index % 3 === 0 ? 'accueil' : 'pied de page',
+        status: index === 9 ? 'desinscrit' : 'actif', createdAt: new Date(Date.now() - index * 86400000).toISOString(),
+      })),
+      campaigns: [
+        { id: 'nwc_1', subject: 'Rentrée : les nouvelles fonctions de School Net Academy', body: 'Bonjour, cette rentrée apporte les cartes scolaires NFC…', audience: 'abonnes', status: 'envoyee', recipients: 9, sentAt: new Date(Date.now() - 12 * 86400000).toISOString(), createdAt: new Date(Date.now() - 13 * 86400000).toISOString() },
+        { id: 'nwc_2', subject: 'Offre Pro : —20 % pour les universités', body: 'Bonjour, les établissements supérieurs bénéficient de 20 %…', audience: 'abonnes', status: 'brouillon', recipients: 0, sentAt: null, createdAt: new Date(Date.now() - 2 * 86400000).toISOString() },
+      ],
+      sms: [
+        { id: 'sms_1', to: '+242 06 580 82 65', body: 'School Net Academy : paiement de 45000 FCFA recu (Scolarite). Merci !', status: 'simule', provider: 'journal', error: null, createdAt: new Date(Date.now() - 86400000).toISOString(), sentAt: null },
+        { id: 'sms_2', to: '+242 06 512 44 18', body: 'School Net Academy : nouvelle inscription enregistree en 6eme A.', status: 'simule', provider: 'journal', error: null, createdAt: new Date(Date.now() - 2 * 86400000).toISOString(), sentAt: null },
+      ],
+      notifications: [
+        { id: 'ntf_1', kind: 'systeme', title: 'Bienvenue sur votre espace', body: "Votre abonnement Université est actif jusqu'à la fin de l'année scolaire.", link: '/app/abonnement', readAt: null, createdAt: new Date(Date.now() - 3600000).toISOString() },
+        { id: 'ntf_2', kind: 'paiement', title: 'Paiement reçu : 45 000 FCFA', body: 'Scolarité — Mobile Money. Reçu PAY-2026-0042.', link: '/app/paiements', readAt: null, createdAt: new Date(Date.now() - 7200000).toISOString() },
+        { id: 'ntf_3', kind: 'inscription', title: 'Carte scolaire disponible', body: "La carte d'identité scolaire de votre enfant est prête (QR + NFC).", link: '/app/mes-enfants', readAt: new Date().toISOString(), createdAt: new Date(Date.now() - 86400000).toISOString() },
+      ],
+      counters: { invoice: 3 },
+    };
+  }
+  return data.platform as Json;
+}
+
 let snapshotPromise: Promise<Json> | null = null;
 
 async function loadSnapshot(): Promise<Json> {
@@ -93,6 +214,7 @@ export async function demoRequest<T>(method: string, rawPath: string, body?: unk
   const query = new URLSearchParams(search);
   const segments = path.split('/').filter(Boolean);
   const [root, id, extra] = segments;
+  const rest = segments.slice(3);
 
   /* ------------------------------- session ------------------------------- */
 
@@ -100,7 +222,7 @@ export async function demoRequest<T>(method: string, rawPath: string, body?: unk
     if (id === 'me' && method === 'GET') {
       const user = currentUser(data);
       if (!user) fail(401, 'Session expirée.');
-      return { user } as T;
+      return { user: enrich(user) } as T;
     }
     if (id === 'login' && method === 'POST') {
       const payload = (body ?? {}) as { email?: string; password?: string };
@@ -109,7 +231,7 @@ export async function demoRequest<T>(method: string, rawPath: string, body?: unk
       if (!target) fail(401, 'Compte de démonstration inconnu. Utilisez un des trois comptes proposés.');
       if (String(payload.password ?? '').length < 4) fail(401, 'Mot de passe trop court (démo : demo1234).');
       localStorage.setItem(SESSION_KEY, target);
-      return { user: data.users[target] } as T;
+      return { user: enrich(data.users[target] as User) } as T;
     }
     if (id === 'logout' && method === 'POST') {
       localStorage.setItem(SESSION_KEY, 'out');
@@ -127,7 +249,255 @@ export async function demoRequest<T>(method: string, rawPath: string, body?: unk
       return { user } as T;
     }
     if (id === 'password') return { ok: true } as T;
+    if (id === 'forgot' && method === 'POST') {
+      const payload = (body ?? {}) as { email?: string };
+      const known = Object.keys(ACCOUNTS).includes(String(payload.email ?? '').toLowerCase());
+      return {
+        ok: true,
+        message: known
+          ? 'Un lien de réinitialisation vient d’être généré pour cette adresse.'
+          : "Si un compte existe pour cette adresse, un lien vient d'être généré.",
+        resetPath: '/reinitialiser?token=demo-reinitialisation',
+        delivered: false,
+      } as T;
+    }
+    if (id === 'reset' && method === 'POST') {
+      return { ok: true, message: 'Mot de passe mis à jour. Vous pouvez vous connecter.' } as T;
+    }
+    if (id === 'oauth') {
+      fail(501, "La connexion sociale n'est pas activée dans la démo statique.");
+    }
     fail(404, 'Route inconnue.');
+  }
+
+  /* ------------------------------ plateforme ----------------------------- */
+
+  if (root === 'platform') {
+    const store = platformStore(data);
+    const currency = String(query.get('currency') ?? DEMO_TENANT.currency).toUpperCase();
+    const withLocal = (plan: Json) => ({
+      ...plan, localPrice: demoConvert(plan.priceFcfa, currency), localCurrency: currency,
+    });
+
+    if (id === 'catalog' && method === 'GET') {
+      return {
+        plans: DEMO_PLANS.map(withLocal), trialDays: 7, baseCurrency: 'XAF',
+        rates: DEMO_RATES, currencies: Object.keys(DEMO_RATES),
+      } as T;
+    }
+
+    if (id === 'signup' && method === 'POST') {
+      const payload = (body ?? {}) as Json;
+      localStorage.setItem(SESSION_KEY, 'admin');
+      const user = data.users.admin as User;
+      Object.assign(user, { name: payload.adminName ?? user.name, email: payload.email ?? user.email });
+      const tenant = {
+        ...DEMO_TENANT, name: payload.schoolName ?? 'Mon établissement', kind: payload.kind ?? 'ecole',
+        country: payload.country ?? DEMO_TENANT.country, countryCode: payload.countryCode ?? 'CG',
+        currency: payload.currency ?? 'XAF', email: payload.email ?? DEMO_TENANT.email,
+        status: 'essai', plan: payload.plan ?? 'pro', seats: 10,
+        trialEndsAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+      };
+      store.tenants.unshift(tenant);
+      return { user: { ...enrich(user), tenant, access: { status: 'essai', blocked: false, daysLeft: 7 } } } as T;
+    }
+
+    if (id === 'overview' && method === 'GET') {
+      const tenants = store.tenants as Json[];
+      return {
+        kpis: {
+          tenants: tenants.length,
+          actifs: tenants.filter((t) => t.status === 'actif').length,
+          essais: tenants.filter((t) => t.status === 'essai').length,
+          bloques: tenants.filter((t) => t.status === 'suspendu' || t.status === 'expire').length,
+          mrr: tenants.filter((t) => t.status === 'actif')
+            .reduce((sum, t) => sum + ((DEMO_PLANS.find((p) => p.id === t.plan)?.priceFcfa) ?? 0), 0),
+          revenue: (store.invoices as Json[]).reduce((sum, i) => sum + (i.amountFcfa ?? i.amount), 0),
+          revenue30d: (store.invoices as Json[]).reduce((sum, i) => sum + (i.amountFcfa ?? i.amount), 0),
+          subscribers: (store.subscribers as Json[]).filter((s) => s.status === 'actif').length,
+          staff: (store.staff as Json[]).length,
+        },
+        trials: (store.tenants as Json[]).filter((t) => t.status === 'essai'),
+        tenants: tenants.slice(0, 8),
+        invoices: store.invoices,
+        staff: store.staff,
+      } as T;
+    }
+
+    if (id === 'tenants') {
+      const items = (store.tenants as Json[]).filter((tenant) => (
+        (!query.get('status') || tenant.status === query.get('status'))
+        && (!query.get('search') || anyContains(tenant, String(query.get('search')), ['name', 'email', 'country']))
+      ));
+      return { items } as T;
+    }
+
+    if (id === 'subscriptions' && method === 'GET') {
+      const items = store.invoices as Json[];
+      return { items, stats: { count: items.length, total: items.reduce((sum, i) => sum + (i.amountFcfa ?? i.amount), 0) } } as T;
+    }
+
+    if (id === 'billing') {
+      const tenant = DEMO_TENANT as Json;
+      const currency = String(tenant.currency ?? 'XAF');
+      if (method === 'GET') {
+        return {
+          tenant, access: DEMO_ACCESS, currency, baseCurrency: 'XAF', rates: DEMO_RATES,
+          plans: DEMO_PLANS.map(withLocal), invoices: store.invoices,
+        } as T;
+      }
+      if (method === 'POST' && extra === 'pay') {
+        const payload = (body ?? {}) as Json;
+        const plan = DEMO_PLANS.find((p) => p.id === payload.plan) ?? DEMO_PLANS[1];
+        const reference = `SUB-DEMO-${String((store.counters as Json).invoice++).padStart(4, '0')}`;
+        const invoice = {
+          id: uid('sub'), reference, tenantId: tenant.id, tenantName: tenant.name, plan: plan.id,
+          amount: demoConvert(plan.priceFcfa, currency), amountFcfa: plan.priceFcfa, currency,
+          method: payload.method ?? 'mobile_money', status: 'paye',
+          periodStart: new Date().toISOString(),
+          periodEnd: new Date(Date.now() + 30 * 86400000).toISOString(),
+          createdAt: new Date().toISOString(),
+        };
+        (store.invoices as Json[]).unshift(invoice);
+        (store.notifications as Json[]).unshift({
+          id: uid('ntf'), kind: 'paiement', title: `Paiement confirmé — ${plan.name}`,
+          body: `Référence ${reference}. Votre établissement est actif jusqu'au ${invoice.periodEnd.slice(0, 10)}.`,
+          link: '/app/abonnement', readAt: null, createdAt: new Date().toISOString(),
+        });
+        return { subscription: invoice, tenant: { ...tenant, status: 'actif', plan: plan.id } } as T;
+      }
+    }
+
+    if (id === 'staff') {
+      if (method === 'GET') return { items: store.staff } as T;
+      if (method === 'POST') {
+        const payload = (body ?? {}) as Json;
+        const member = {
+          id: uid('usr'), name: payload.name, email: payload.email, platformRole: payload.platformRole,
+          phone: payload.phone ?? null, title: payload.platformRole, role: 'admin', createdAt: new Date().toISOString(),
+          lastLoginAt: null,
+        };
+        (store.staff as Json[]).push(member);
+        return { member, temporaryPassword: 'agent.demo2026' } as T;
+      }
+      const target = (store.staff as Json[]).find((item) => item.id === id);
+      if (!target) fail(404, 'Membre introuvable.');
+      if (method === 'PATCH') { Object.assign(target, body); return { ok: true } as T; }
+      if (method === 'DELETE') {
+        const list = store.staff as Json[];
+        list.splice(list.indexOf(target), 1);
+        return { ok: true } as T;
+      }
+    }
+
+    if (id === 'newsletter') {
+      if (method === 'GET') {
+        const subscribers = store.subscribers as Json[];
+        return {
+          campaigns: store.campaigns,
+          subscribers,
+          stats: {
+            total: subscribers.length,
+            actifs: subscribers.filter((s) => s.status === 'actif').length,
+            desinscrits: subscribers.filter((s) => s.status !== 'actif').length,
+          },
+          countries: [],
+        } as T;
+      }
+      if (method === 'POST' && !extra) {
+        const payload = (body ?? {}) as Json;
+        const recipients = (store.subscribers as Json[]).filter((s) => s.status === 'actif').length;
+        const campaign = {
+          id: uid('nwc'), subject: payload.subject, body: payload.body, audience: payload.audience ?? 'abonnes',
+          status: payload.send ? 'envoyee' : 'brouillon', recipients: payload.send ? recipients : 0,
+          sentAt: payload.send ? new Date().toISOString() : null, createdAt: new Date().toISOString(),
+        };
+        (store.campaigns as Json[]).unshift(campaign);
+        return { campaign } as T;
+      }
+      if (method === 'POST' && (extra === 'send' || rest[0] === 'send')) {
+        const campaignId = rest[0] === 'send' ? extra : id;
+        const campaign = (store.campaigns as Json[]).find((item) => item.id === campaignId);
+        if (!campaign) fail(404, 'Campagne introuvable.');
+        const recipients = (store.subscribers as Json[]).filter((s) => s.status === 'actif').length;
+        Object.assign(campaign, { status: 'envoyee', recipients, sentAt: new Date().toISOString() });
+        return { ok: true, recipients } as T;
+      }
+    }
+
+    if (id === 'sms' && method === 'GET') {
+      const items = store.sms as Json[];
+      return {
+        items,
+        stats: { total: items.length, envoyes: items.filter((i) => i.status === 'envoye').length, simules: items.filter((i) => i.status === 'simule').length },
+        configured: false,
+      } as T;
+    }
+
+    fail(404, 'Route plateforme inconnue.');
+  }
+
+  /* ------------------------------ notifications -------------------------- */
+
+  if (root === 'notifications') {
+    const store = platformStore(data);
+    const items = store.notifications as Json[];
+    if (method === 'GET') {
+      return { items, unread: items.filter((item) => !item.readAt).length } as T;
+    }
+    if (method === 'POST' && id === 'read-all') {
+      items.forEach((item) => { item.readAt = item.readAt ?? new Date().toISOString(); });
+      return { ok: true } as T;
+    }
+    const target = items.find((item) => item.id === id);
+    if (!target) fail(404, 'Notification introuvable.');
+    if (method === 'POST' && extra === 'read') {
+      target.readAt = target.readAt ?? new Date().toISOString();
+      return { ok: true } as T;
+    }
+    if (method === 'DELETE') {
+      items.splice(items.indexOf(target), 1);
+      return { ok: true } as T;
+    }
+  }
+
+  /* -------------------------------- newsletter --------------------------- */
+
+  if (root === 'newsletter' && method === 'POST') {
+    const store = platformStore(data);
+    const payload = (body ?? {}) as Json;
+    if (id === 'subscribe') {
+      const email = String(payload.email ?? '').toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail(400, 'Adresse e-mail invalide.');
+      const existing = (store.subscribers as Json[]).find((item) => item.email === email);
+      if (existing) {
+        existing.status = 'actif';
+        return { ok: true, already: true, message: 'Vous êtes déjà abonné : merci !' } as T;
+      }
+      (store.subscribers as Json[]).unshift({
+        id: uid('nwl'), email, name: payload.name ?? null, countryCode: payload.countryCode ?? 'CG',
+        source: payload.source ?? 'site', status: 'actif', createdAt: new Date().toISOString(),
+      });
+      return { ok: true, message: 'Inscription confirmée. À très vite dans votre boîte mail !' } as T;
+    }
+    if (id === 'unsubscribe') return { ok: true } as T;
+  }
+
+  /* ---------------------------------- IA --------------------------------- */
+
+  if (root === 'ai' && method === 'POST') {
+    const payload = (body ?? {}) as { messages?: { role: string; content: string }[] };
+    const question = String(payload.messages?.filter((m) => m.role === 'user').at(-1)?.content ?? '').toLowerCase();
+    const reply = question.includes('prix') || question.includes('abonnement') || question.includes('tarif')
+      ? "Trois offres : **Essentiel** 15 000 FCFA/mois, **Pro** 45 000 FCFA/mois et **Université** 120 000 FCFA/mois. Chaque établissement commence par **7 jours d'essai gratuit**, puis règle par Mobile Money, carte, virement ou espèces depuis l'écran « Abonnement »."
+      : question.includes('carte') || question.includes('nfc') || question.includes('qr')
+        ? "Chaque élève reçoit automatiquement une **carte scolaire** avec QR code, code-barres et badge NFC. Le surveillant scanne la carte (ou approche le badge) pour **signer la présence** en un clic, depuis l'écran « Cartes scolaires »."
+        : question.includes('sms') || question.includes('parent')
+          ? "Lors d'une inscription ou d'un paiement, le tuteur reçoit une **notification dans l'application** et un **SMS** au numéro enregistré. Vous pouvez suivre les envois dans la super administration, onglet « Journal SMS »."
+          : question.includes('newsletter') || question.includes('campagne')
+            ? "Depuis la super administration, onglet **Newsletter**, rédigez votre message, choisissez l'audience puis envoyez. Les inscrits du site alimentent automatiquement la liste."
+            : "Je suis **School Net IA**, l'assistant de la plateforme. Posez-moi une question sur les élèves, les paiements, les cartes scolaires, les abonnements, la newsletter ou les SMS aux parents.";
+    return { reply, source: 'local' } as T;
   }
 
   const user = currentUser(data);

@@ -1,5 +1,30 @@
 export type Role = 'admin' | 'teacher' | 'parent';
 
+export type PlatformRole = 'owner' | 'manager' | 'support' | 'finance' | 'marketing' | 'closer';
+
+export interface TenantSummary {
+  id: string;
+  name: string;
+  kind: 'ecole' | 'universite' | 'mixte' | string;
+  country: string;
+  countryCode: string;
+  currency: string;
+  email?: string | null;
+  phone?: string | null;
+  status: 'essai' | 'actif' | 'expire' | 'suspendu' | string;
+  plan?: string | null;
+  seats?: number | null;
+  trialEndsAt?: string | null;
+  createdAt?: string | null;
+  access?: AccessState;
+}
+
+export interface AccessState {
+  status: 'essai' | 'essai_expire' | 'actif' | 'expire' | 'suspendu' | string;
+  blocked: boolean;
+  daysLeft: number | null;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -8,6 +33,10 @@ export interface User {
   phone?: string | null;
   title?: string | null;
   avatarColor?: string | null;
+  platformRole?: PlatformRole | null;
+  tenantId?: string | null;
+  tenant?: TenantSummary | null;
+  access?: AccessState | null;
 }
 
 export type StudentStatus = 'actif' | 'suspendu' | 'diplome' | 'parti';
@@ -408,4 +437,136 @@ export interface CardScanResult {
   attendance: CardAttendance | null;
   alreadyMarked: boolean;
   previousStatus?: string | null;
+}
+
+/* ------------------------------ Plateforme ------------------------------- */
+
+export interface Plan {
+  id: 'essentiel' | 'pro' | 'universite' | string;
+  name: string;
+  priceFcfa: number;
+  price?: number;
+  currency?: string;
+  localPrice?: number;
+  localCurrency?: string;
+  period: string;
+  tagline: string;
+  features: string[];
+  seats: number;
+  popular?: boolean;
+  trialDays: number;
+}
+
+export interface CatalogResponse {
+  plans: Plan[];
+  trialDays: number;
+  baseCurrency: string;
+  rates?: Record<string, number>;
+  currencies?: string[];
+}
+
+export interface SubscriptionInvoice {
+  id: string;
+  reference: string;
+  tenantId?: string;
+  tenantName?: string;
+  tenantCountry?: string;
+  plan: string;
+  amount: number;
+  amountFcfa?: number | null;
+  currency: string;
+  method: string;
+  status: string;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  createdAt: string;
+}
+
+export interface BillingResponse {
+  tenant: TenantSummary | null;
+  access: AccessState;
+  plans: Plan[];
+  invoices: SubscriptionInvoice[];
+  currency?: string;
+  baseCurrency?: string;
+  rates?: Record<string, number>;
+}
+
+export interface PlatformOverview {
+  kpis: {
+    tenants: number;
+    actifs: number;
+    essais: number;
+    bloques: number;
+    mrr: number;
+    revenue: number;
+    revenue30d: number;
+    subscribers: number;
+    staff: number;
+  };
+  trials: TenantSummary[];
+  tenants: TenantSummary[];
+  invoices: SubscriptionInvoice[];
+  staff: { id: string; name: string; email: string; platformRole: PlatformRole }[];
+}
+
+export interface PlatformTenant extends TenantSummary {
+  owner?: { name: string; email: string } | null;
+  users?: number;
+  lastSubscription?: { reference: string; amount: number; plan: string; createdAt: string; periodEnd: string } | null;
+}
+
+export interface PlatformStaff {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  title?: string | null;
+  avatarColor?: string | null;
+  platformRole: PlatformRole;
+  lastLoginAt?: string | null;
+  createdAt: string;
+  active?: boolean;
+}
+
+export interface NotificationItem {
+  id: string;
+  kind: string;
+  title: string;
+  body?: string | null;
+  link?: string | null;
+  readAt?: string | null;
+  createdAt: string;
+}
+
+export interface NewsletterSubscriber {
+  id: string;
+  email: string;
+  name?: string | null;
+  countryCode?: string | null;
+  source?: string | null;
+  status: 'actif' | 'desinscrit' | string;
+  createdAt: string;
+}
+
+export interface NewsletterCampaign {
+  id: string;
+  subject: string;
+  body: string;
+  audience: string;
+  status: 'brouillon' | 'envoyee' | string;
+  recipients: number;
+  sentAt?: string | null;
+  createdAt: string;
+}
+
+export interface SmsMessage {
+  id: string;
+  to: string;
+  body: string;
+  status: 'envoye' | 'simule' | 'echec' | string;
+  provider?: string | null;
+  error?: string | null;
+  createdAt: string;
+  sentAt?: string | null;
 }

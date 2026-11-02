@@ -1,6 +1,6 @@
 # Rapport d'analyse & de finition — School Net Academy
 
-**Date :** 1er novembre 2026 · **Commit audité :** `77901b0` (module cartes : voir § 0 bis) · **Production :** <https://school-net-academy.vercel.app>
+**Date :** 2 novembre 2026 · **Dernier audit local :** plateforme multi-établissements (voir § 0 ter) · **Production :** <https://school-net-academy.vercel.app>
 
 Ce document trace la recette complète de la plateforme : ce qui a été vérifié, ce qui a été
 corrigé, ce qui a été ajouté, et ce qui reste volontairement hors périmètre.
@@ -50,6 +50,44 @@ d'un élève créé plus tôt échouent en cascade.
 
 ---
 
+## 0 ter. Plateforme multi-établissements, abonnements et super administration (2 novembre 2026)
+
+### Ce qui a été construit
+
+| Domaine | Détail | Vérifié par |
+| --- | --- | --- |
+| Inscription d'un établissement | `/inscription` : 4 étapes (établissement, pays + devise, offre, compte). Liste **complète des pays du monde** (`web/src/lib/countries.ts`), devise déduite du pays. | Smoke `Signup`, audit « Inscription établissement » |
+| Essai gratuit | 7 jours, `trial_ends_at` sur `tenants`. À l'expiration, l'API répond **402 `ABONNEMENT_REQUIS`** et le front redirige vers `/app/abonnement`. | Audit « Établissement suspendu → 402 » |
+| Abonnement | 3 offres (15 000 / 45 000 / 120 000 FCFA), montants **convertis dans la devise de l'établissement** (136 devises), paiement Mobile Money, carte, virement ou espèces. Factures `SUB-2026-NNNN`. | Audit « Paiement self-service », « Abonnement activé depuis la plateforme » |
+| Super administration | `/plateforme` : vue d'ensemble, établissements, équipe, abonnements, studio newsletter, journal SMS — chaque onglet filtré par rôle. | Smoke `Platform`, audit RBAC |
+| Équipe & rôles | `owner`, `manager`, `support`, `finance`, `marketing`, `closer`. `requirePlatform(...)` vérifie le rôle **côté serveur** ; le propriétaire contourne les restrictions. | Audit « Nouvel agent + droits limités » |
+| Notifications parents | Inscription d'un élève et paiement → notification in-app + **SMS** au numéro du tuteur (`sms_outbox`, statut `simule` sans opérateur). | Audit « Paiement → notification + SMS » |
+| Newsletter | Formulaire public (`/api/newsletter/subscribe`), studio de campagne, audiences (abonnés, tous, essais, clients), envoi. | Audit « Newsletter » |
+| Mot de passe oublié | `/mot-de-passe-oublie` → jeton 30 minutes à usage unique → `/reinitialiser?token=…`. | Audit « Parcours oubli → réinitialisation » |
+| Connexion sociale | Google / Facebook OAuth 2.0 (redirection + callback). Sans identifiants, l'API répond **501** avec l'aide de configuration, et la connexion e-mail reste disponible. | Audit « Connexion sociale non configurée → 501 » |
+| Assistant IA | Widget « School Net IA » (`POST /api/ai/chat`). Utilise `OPENAI_API_KEY` si présente, sinon base de connaissances locale. | Audit « POST /api/ai/chat répond » |
+
+### Configuration (variables d'environnement, jamais dans Git)
+
+| Variable | Usage |
+| --- | --- |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | Assistant IA (défaut `gpt-4o-mini`) |
+| `SMS_API_URL`, `SMS_API_KEY` | Envoi réel des SMS (sinon journalisation `simule`) |
+| `SMTP_URL` / `RESEND_API_KEY` | Envoi des e-mails (réinitialisation, reçus) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Connexion Google |
+| `FACEBOOK_APP_ID` / `FACEBOOK_APP_SECRET` | Connexion Facebook |
+| `APP_URL` | URL publique pour les redirections OAuth |
+
+### Limites connues
+
+- Sur Vercel, la base SQLite vit dans `/tmp` : elle est **éphémère** et non partagée entre instances.
+  Les données de démonstration sont régénérées à froid ; une base PostgreSQL managée est requise pour
+  une exploitation réelle multi-utilisateurs.
+- Aucune passerelle de paiement réelle n'est branchée : les encaissements sont enregistrés et
+  facturés, mais le débit Mobile Money / carte reste simulé.
+
+---
+
 ## 0 bis. Cartes scolaires & affichage du tableau de bord (novembre 2026)
 
 **Affichage corrigé.** Sur le tableau de bord, la carte « Université & vie scolaire » et la
@@ -72,7 +110,8 @@ puis les blocs pleine largeur.
 | Sécurité | Réservé aux rôles direction/enseignant ; le parent reçoit 403 |
 
 Vérifications ajoutées à l'audit (8) : liste, détail, scan QR, scan URL de badge, carte inconnue,
-signature manuelle, association NFC + réémission, contrôle d'accès parent → **95/95**.
+signature manuelle, association NFC + réémission, contrôle d'accès parent → **114/114** (dont 20
+vérifications dédiées à la plateforme : inscription, essai, blocage, RBAC, newsletter, IA).
 
 ---
 
@@ -82,8 +121,8 @@ signature manuelle, association NFC + réémission, contrôle d'accès parent �
 | --- | --- | --- |
 | Typage de l'interface | `npm run typecheck` (TypeScript strict) | ✅ 0 erreur |
 | Compilation production | `npm run build` (Vite) | ✅ 1,1 s |
-| Rendu de toutes les pages | `node scripts/smoke.mjs` | ✅ 20/20 pages, avec contrôle du contenu attendu |
-| Recette fonctionnelle de l'API | `npm run audit` | ✅ **95/95 vérifications** |
+| Rendu de toutes les pages | `node scripts/smoke.mjs` | ✅ 25/25 pages, avec contrôle du contenu attendu |
+| Recette fonctionnelle de l'API | `npm run audit` | ✅ **114/114 vérifications** |
 | API simulée de la démo statique | `node scripts/test-demo-mock.mjs` | ✅ 35 routes |
 | Déploiement serverless | Vercel (production) | ✅ `READY` / `PROMOTED` |
 
@@ -170,7 +209,7 @@ reconstruction de la démo statique (`docs/`) avec les nouvelles fonctionnalité
 ## 5. Qualité / non-régression
 
 ```bash
-npm run check   # typecheck + build + rendu des 19 pages + 87 vérifications API
+npm run check   # typecheck + build + rendu des 25 pages + 114 vérifications API
 ```
 
 - `scripts/audit.mjs` — **nouveau** : recette fonctionnelle de bout en bout.
