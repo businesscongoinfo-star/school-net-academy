@@ -21,7 +21,7 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABAS
 export const supabaseConfigured = Boolean(SUPABASE_URL && SERVICE_KEY);
 export const supabaseAuthEnabled = Boolean(SUPABASE_URL && (SERVICE_KEY || SUPABASE_PUBLISHABLE_KEY));
 
-const TIMEOUT = 12_000;
+const TIMEOUT = Number(process.env.SUPABASE_TIMEOUT_MS || 15_000);
 
 async function request(path, { method = 'GET', body, headers = {}, key = SERVICE_KEY } = {}) {
   if (!SUPABASE_URL) throw new Error('Supabase non configuré (SUPABASE_URL manquant).');

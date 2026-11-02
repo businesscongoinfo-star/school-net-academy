@@ -19,6 +19,7 @@ import { db, dbFile, isDirty, clearDirty } from './db.js';
 
 const STATE_ID = 'main';
 let localVersion = 0;
+let restoredOnce = false;
 let timer = null;
 let flushing = null;
 let lastSyncAt = null;
@@ -33,17 +34,28 @@ async function fetchState() {
   return Array.isArray(rows) && rows[0] ? rows[0] : null;
 }
 
+/** Version distante seule (contrôle anti-écrasement, réponse minuscule). */
+async function remoteVersion() {
+  const rows = await rest(`/app_state?id=eq.${STATE_ID}&select=version`);
+  return Array.isArray(rows) && rows[0] ? Number(rows[0].version ?? 0) : 0;
+}
+
 /** Recharge l'instantané distant dans le fichier SQLite local (avant ouverture). */
 export async function restore() {
   if (!supabaseConfigured) return { restored: false, mode: 'local' };
   try {
-    const state = await fetchState();
+    let state = await fetchState().catch(() => null);
+    if (!state) {
+      // Deuxième tentative : le premier appel à froid peut dépasser le délai.
+      state = await fetchState().catch(() => null);
+    }
     if (!state?.payload) return { restored: false, mode: 'supabase', version: 0 };
     const buffer = zlib.gunzipSync(Buffer.from(state.payload, 'base64'));
     fs.mkdirSync(path.dirname(dbFile()), { recursive: true });
     for (const suffix of ['', '-wal', '-shm']) fs.rmSync(`${dbFile()}${suffix}`, { force: true });
     fs.writeFileSync(dbFile(), buffer);
     localVersion = Number(state.version ?? 0);
+    restoredOnce = true;
     lastSyncAt = new Date().toISOString();
     return { restored: true, mode: 'supabase', version: localVersion, bytes: buffer.length };
   } catch (error) {
@@ -56,6 +68,22 @@ export async function restore() {
 /** Produit un instantané cohérent de la base (VACUUM INTO) et le téléverse. */
 async function pushSnapshot() {
   if (!supabaseConfigured || !isDirty()) return { saved: false };
+
+  /**
+   * Anti-écrasement : si un instantané distant existe et que cette instance ne
+   * l'a pas restauré (démarrage dégradé), on n'envoie rien plutôt que de
+   * remplacer des données récentes par une base de démonstration.
+   */
+  try {
+    const version = await remoteVersion();
+    if (version > localVersion && !restoredOnce) {
+      lastError = `instantané distant plus récent (v${version}) : écriture différée`;
+      return { saved: false, error: lastError };
+    }
+  } catch {
+    /* contrôle impossible : on tente la sauvegarde */
+  }
+
   const target = TMP_SNAPSHOT();
   try {
     fs.rmSync(target, { force: true });
@@ -69,6 +97,7 @@ async function pushSnapshot() {
       headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
     });
     localVersion = version;
+    restoredOnce = true;
     lastSyncAt = new Date().toISOString();
     lastError = null;
     clearDirty();
