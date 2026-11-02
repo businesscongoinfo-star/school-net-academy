@@ -677,7 +677,10 @@ router.get('/integrations', requirePlatform('manager', 'support', 'marketing', '
     mail: { ...mail, smtp: { host: mailConfig().smtp.host, port: mailConfig().smtp.port, user: mailConfig().smtp.user } },
     persistence: persistenceStatus(),
     sms: { configured: Boolean(smsConfig().url && smsConfig().apiKey), sender: smsConfig().sender },
-    ai: { configured: aiReady(), model: aiConfig().model, origin: aiConfig().origin },
+    ai: {
+      configured: aiReady(), model: aiConfig().model, origin: aiConfig().origin,
+      hint: aiConfig().hint, lastCheck: aiConfig().lastCheck,
+    },
     settings: publicSettings(),
     emails: recentEmails(30),
     brand: { site: emailBrand.site, contact: emailBrand.contact },
@@ -736,7 +739,22 @@ router.put('/integration/ai', requirePlatform('owner', 'manager'), asyncHandler(
 
   const current = getSetting('ai', {}) || {};
   const next = { ...current };
-  if (data.apiKey !== undefined && !String(data.apiKey ?? '').startsWith('•••')) next.apiKey = String(data.apiKey ?? '').trim();
+  if (data.apiKey !== undefined && !String(data.apiKey ?? '').startsWith('•••')) {
+    const key = String(data.apiKey ?? '').replace(/\s+/g, '');
+    if (key) {
+      // Une clé OpenAI complète fait ~50 à 200 caractères et commence par « sk- ».
+      // Le message évite le piège classique : coller la version masquée du tableau de bord.
+      if (!key.startsWith('sk-') || key.length < 40) {
+        throw badRequest(
+          `Clé incomplète (${key.length} caractères). Copiez la clé secrète entière depuis platform.openai.com → API keys : `
+          + "elle commence par « sk- » et fait au moins 40 caractères. La valeur masquée du type « sk-...nSQA » ne fonctionne pas.",
+        );
+      }
+      next.apiKey = key;
+    } else {
+      next.apiKey = '';
+    }
+  }
   if (data.model !== undefined && data.model) next.model = data.model;
   if (data.temperature !== undefined && data.temperature !== null) next.temperature = data.temperature;
   setSetting('ai', next);
@@ -770,21 +788,28 @@ router.post('/integration/ai/test', requirePlatform('owner', 'manager'), asyncHa
       throw new Error(`OpenAI ${response.status} — ${body.slice(0, 160)}`);
     }
     const payload = await response.json();
+    const latencyMs = Date.now() - startedAt;
+    const model = payload?.model ?? config.model;
+    setSetting('ai', {
+      ...(getSetting('ai', {}) || {}),
+      lastCheck: { ok: true, at: new Date().toISOString(), model, latencyMs, error: null },
+    });
     res.json({
       ok: true,
       configured: true,
-      model: payload?.model ?? config.model,
-      latencyMs: Date.now() - startedAt,
+      model,
+      latencyMs,
       answer: payload?.choices?.[0]?.message?.content?.trim()?.slice(0, 160) ?? '',
       tokens: payload?.usage?.total_tokens ?? null,
     });
   } catch (error) {
-    res.status(502).json({
-      ok: false,
-      configured: true,
-      error: String(error?.message ?? error).slice(0, 220),
-      latencyMs: Date.now() - startedAt,
+    const latencyMs = Date.now() - startedAt;
+    const message = String(error?.message ?? error).slice(0, 220);
+    setSetting('ai', {
+      ...(getSetting('ai', {}) || {}),
+      lastCheck: { ok: false, at: new Date().toISOString(), model: config.model, latencyMs, error: message },
     });
+    res.status(502).json({ ok: false, configured: true, error: message, latencyMs });
   }
 }));
 

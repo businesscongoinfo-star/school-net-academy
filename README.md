@@ -63,7 +63,10 @@ chacun de ces profils.
   `finance`, `marketing`, `closer` — chacun ne voit que ses onglets.
 - **Newsletter** : formulaire public, base d'abonnés, studio de campagnes et envoi.
 - **Notifications** in-app + **SMS aux parents** à l'inscription d'un élève et à chaque paiement.
-- **Assistant IA** « School Net IA » (`OPENAI_API_KEY`), avec repli local hors ligne.
+- **Assistant IA** « School Net IA » : clé OpenAI enregistrée depuis `/plateforme` →
+  **Intégrations** → « Assistant IA (OpenAI) » (aucun redéploiement), sinon `OPENAI_API_KEY`,
+  sinon repli local hors ligne. L'écran affiche l'empreinte de la clé (`••••nSQA`), le modèle
+  (`gpt-4o-mini` par défaut) et le résultat du dernier test avec sa latence.
 
 ### Tableau de bord
 - KPI contextuels par rôle (effectifs, encaissements 30 jours, reste à recouvrer, moyenne).
@@ -156,7 +159,7 @@ configuration CORS, des URL relatives partout.
 | `npm run seed:reset` | Efface et régénère les données de démonstration |
 | `npm run typecheck` | Vérification TypeScript de l'interface |
 | `node scripts/smoke.mjs` | Test de rendu de toutes les pages avec les données réelles |
-| `npm run audit` | Recette fonctionnelle de l'API : 122 vérifications (CRUD, droits, plateforme, intégrations, IA, erreurs) |
+| `npm run audit` | Recette fonctionnelle de l'API : 123 vérifications (CRUD, droits, plateforme, intégrations, IA, erreurs) |
 | `npm run check` | Enchaîne typecheck + build + rendu des pages + audit API |
 
 ### Développement avec rechargement à chaud

@@ -159,6 +159,8 @@ router.get('/status', (req, res) => {
     configured: aiReady(),
     model: config.model,
     origin: config.origin,
+    hint: config.hint,
+    lastCheck: config.lastCheck,
     fallback: 'Base de connaissances locale (français)',
   });
 });

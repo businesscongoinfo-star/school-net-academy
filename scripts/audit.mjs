@@ -67,6 +67,7 @@ class Client {
 
   get(path) { return this.request('GET', path); }
   post(path, body) { return this.request('POST', path, body); }
+  put(path, body) { return this.request('PUT', path, body); }
   patch(path, body) { return this.request('PATCH', path, body); }
   del(path) { return this.request('DELETE', path); }
 
@@ -1060,15 +1061,30 @@ async function main() {
     return `${json.configured ? 'OpenAI' : 'base locale'} · ${json.model}`;
   });
 
+  await check('Intégrations', 'Assistant IA : clé masquée ou incomplète refusée', async () => {
+    const masked = await superClient.put('/api/platform/integration/ai', { apiKey: 'sk-...nSQA' });
+    expect(masked.status === 400, `clé masquée acceptée (${masked.status})`);
+    expect(String(masked.json.error ?? '').includes('incomplète'), 'message peu explicite');
+    const short = await superClient.put('/api/platform/integration/ai', { apiKey: 'sk-trop-court' });
+    expect(short.status === 400, `clé trop courte acceptée (${short.status})`);
+    return 'clé incomplète → 400 avec explication';
+  });
+
   await check('Intégrations', 'Assistant IA : clé refusée → repli local', async () => {
-    const saved = await superClient.ok('PUT', '/api/platform/integration/ai', { apiKey: 'sk-test-invalide', model: 'gpt-4o-mini' });
+    const fakeKey = `sk-test-${'0'.repeat(40)}`;
+    const saved = await superClient.ok('PUT', '/api/platform/integration/ai', { apiKey: fakeKey, model: 'gpt-4o-mini' });
     expect(saved.ai?.configured === true, 'clé non enregistrée');
+    const status = await fetch(`${BASE}/api/ai/status?t=${Date.now()}`).then((r) => r.json());
+    expect(status.hint === '••••0000', `empreinte inattendue (${status.hint})`);
+    expect(JSON.stringify(status).includes('sk-test') === false, 'une clé fuite dans l’état');
     const chat = await superClient.ok('POST', '/api/ai/chat', { messages: [{ role: 'user', content: 'Quels sont vos tarifs ?' }] });
     expect(typeof chat.reply === 'string' && chat.reply.length > 10, 'aucune réponse');
     expect(chat.source === 'local', 'le repli local aurait dû prendre le relais');
     const cleared = await superClient.ok('PUT', '/api/platform/integration/ai', { apiKey: '', model: 'gpt-4o-mini' });
     expect(cleared.ai?.configured === false || process.env.OPENAI_API_KEY, 'clé non effacée');
-    return 'repli local opérationnel';
+    const after = await fetch(`${BASE}/api/ai/status?t=${Date.now()}`).then((r) => r.json());
+    expect(after.hint === null || process.env.OPENAI_API_KEY, 'empreinte persistante après effacement');
+    return 'empreinte ••••0000 · repli local opérationnel';
   });
 
   await check('Intégrations', 'Réinitialisation : e-mail mis en file', async () => {

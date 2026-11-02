@@ -88,9 +88,12 @@ export function aiConfig() {
   const apiKey = stored.apiKey || process.env.OPENAI_API_KEY || '';
   return {
     apiKey,
+    // Empreinte affichable (jamais la clé complète) : « ••••nSQA ».
+    hint: apiKey ? `••••${String(apiKey).slice(-4)}` : null,
     model: stored.model || process.env.OPENAI_MODEL || 'gpt-4o-mini',
     temperature: Number(stored.temperature ?? 0.5),
     maxTokens: Number(stored.maxTokens ?? 400),
+    lastCheck: stored.lastCheck || null,
     source: stored.apiKey ? 'interface' : (process.env.OPENAI_API_KEY ? 'environnement' : null),
     origin: stored.apiKey ? 'settings' : (process.env.OPENAI_API_KEY ? 'env' : null),
   };

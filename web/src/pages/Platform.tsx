@@ -3,6 +3,7 @@ import {
   Building2, CalendarClock, CreditCard, Crown, DollarSign, Headphones, Mail, Megaphone,
   MessageSquare, Pencil, Plus, RefreshCw, Send, ShieldCheck, Target, Trash2, TrendingUp,
   UserPlus, Users, Wallet, Wifi, XCircle, Copy, Check, MailCheck, AlertTriangle, LogIn,
+  Sparkles, KeyRound, Save,
 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
@@ -1134,7 +1135,10 @@ type IntegrationsPayload = {
   };
   persistence: { mode: string; version: number | null; lastSyncAt: string | null; lastError: string | null };
   sms: { configured: boolean; sender: string };
-  ai: { configured: boolean; model: string; origin: string | null };
+  ai: {
+    configured: boolean; model: string; origin: string | null; hint: string | null;
+    lastCheck: { ok: boolean; at: string; model: string; latencyMs: number; error: string | null } | null;
+  };
   settings: { key: string; value: Record<string, unknown>; updatedAt: string }[];
   emails: { id: string; to: string; subject: string; kind: string; status: string; provider: string | null; error: string | null; createdAt: string; sentAt: string | null }[];
 };
@@ -1168,6 +1172,8 @@ function IntegrationsTab() {
       smtpPort: String(mail.smtpPort || data.mail.smtp.port || 587),
       smtpUser: String(mail.smtpUser || data.mail.smtp.user || ''),
     }));
+    const ai = stored('ai') as Record<string, unknown>;
+    setAiForm((current) => ({ ...current, model: String(ai.model || data.ai.model || current.model) }));
     setInitialised(true);
   }
 
@@ -1359,6 +1365,93 @@ function IntegrationsTab() {
                 <p className="small">
                   Les messages (identifiants, reçus, newsletter) sont conservés en file d’attente et seront envoyés
                   dès qu’un fournisseur sera actif. La réinitialisation de mot de passe fonctionne déjà via Supabase.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card>
+        <div className="card-head">
+          <div>
+            <h3>Assistant IA (OpenAI)</h3>
+            <p className="small muted">
+              Collez la clé secrète de votre projet OpenAI : l’assistant « School Net IA » répond alors avec le
+              modèle choisi, immédiatement et sans redéploiement. Sans clé, il répond depuis la base de
+              connaissances locale.
+            </p>
+          </div>
+          <Badge tone={data?.ai?.configured ? 'success' : 'warning'}>
+            {data?.ai?.configured ? 'Clé active' : 'Aucune clé'}
+          </Badge>
+        </div>
+        <div className="card-body stack gap-14">
+          <div className="grid" style={{ gridTemplateColumns: '2fr 1fr', gap: 14 }}>
+            <Field
+              label="Clé API secrète (sk-…)"
+              hint={data?.ai?.hint
+                ? `Clé enregistrée : ${data.ai.hint} · source : ${data.ai.origin === 'env' ? 'variable d’environnement' : 'interface'}. Laissez vide pour la conserver.`
+                : 'platform.openai.com → API keys → « Create new secret key ». La clé complète ne s’affiche qu’une seule fois : copiez-la immédiatement.'}
+            >
+              <Input
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                value={aiForm.apiKey}
+                onChange={(event) => setAiForm({ ...aiForm, apiKey: event.target.value })}
+                placeholder={data?.ai?.configured ? 'Laisser vide pour conserver la clé actuelle' : 'sk-proj-…'}
+              />
+            </Field>
+            <Field label="Modèle">
+              <Select value={aiForm.model} onChange={(event) => setAiForm({ ...aiForm, model: event.target.value })}>
+                <option value="gpt-4o-mini">gpt-4o-mini (rapide, économique)</option>
+                <option value="gpt-4o">gpt-4o</option>
+                <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+                <option value="gpt-4.1">gpt-4.1 (le plus précis)</option>
+              </Select>
+            </Field>
+          </div>
+
+          <div className="row gap-10 wrap">
+            <Button variant="primary" icon={Save} loading={saveAi.isPending} onClick={() => saveAi.mutate()}>
+              Enregistrer la clé
+            </Button>
+            <Button variant="secondary" icon={Sparkles} loading={testAi.isPending} onClick={() => testAi.mutate()}>
+              Tester l’assistant
+            </Button>
+            {data?.ai?.lastCheck && (
+              <span className={`row gap-8 small ${data.ai.lastCheck.ok ? 'success-text' : 'error-text'}`} style={{ alignItems: 'center' }}>
+                <span className={`status-dot ${data.ai.lastCheck.ok ? 'on' : 'off'}`} />
+                {data.ai.lastCheck.ok
+                  ? `Dernier test réussi · ${data.ai.lastCheck.model} · ${data.ai.lastCheck.latencyMs} ms · ${formatDateTime(data.ai.lastCheck.at)}`
+                  : `Dernier test en échec · ${data.ai.lastCheck.error ?? 'erreur inconnue'}`}
+              </span>
+            )}
+          </div>
+
+          {!data?.ai?.configured && (
+            <div className="callout warning">
+              <AlertTriangle size={17} />
+              <div>
+                <strong>Clé OpenAI non renseignée</strong>
+                <p className="small">
+                  L’assistant fonctionne en mode local : il répond aux questions fréquentes (abonnements, cartes
+                  NFC, présences, paiements, newsletter) sans appeler OpenAI. Dès qu’une clé valide est enregistrée,
+                  les réponses passent par le modèle choisi.
+                </p>
+              </div>
+            </div>
+          )}
+          {data?.ai?.configured && data?.ai?.lastCheck && !data.ai.lastCheck.ok && (
+            <div className="callout warning">
+              <KeyRound size={17} />
+              <div>
+                <strong>La clé est enregistrée mais le dernier appel a échoué</strong>
+                <p className="small">
+                  {data.ai.lastCheck.error}. Vérifiez que la clé est complète (elle commence par <code>sk-</code> et
+                  fait plus de 40 caractères), qu’elle est active et que le projet dispose d’un crédit. Une clé
+                  révoquée renvoie « 401 clé API refusée ».
                 </p>
               </div>
             </div>
