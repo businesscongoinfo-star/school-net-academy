@@ -23,14 +23,28 @@ const studentSchema = z.object({
   academicLevel: z.string().max(10).nullable().optional(),
   notes: z.string().max(600).nullable().optional(),
   matricule: z.string().max(40).optional(),
+  // Photo : data URL JPEG/PNG produite par le navigateur (≤ 400 ko) ou URL externe.
+  photo: z.string().max(400_000).nullable().optional(),
+  photoThumb: z.string().max(80_000).nullable().optional(),
 });
 
 const toRow = (s, enrolledAt, ts) => [
   s.firstName, s.lastName, s.gender, s.birthDate ?? null, s.classId || null,
   s.guardianName ?? null, s.guardianPhone ?? null, s.guardianEmail ?? null,
   s.address ?? null, s.status, s.studentType ?? 'eleve', s.programId || null,
-  s.academicLevel || null, enrolledAt, s.notes ?? null, ts, ts,
+  s.academicLevel || null, enrolledAt, s.notes ?? null,
+  s.photo ?? null, s.photoThumb ?? null, ts, ts,
 ];
+
+/** Une photo doit être une image (data URL ou URL http) : on refuse le reste. */
+function cleanPhoto(value) {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  const photo = String(value).trim();
+  if (/^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/.test(photo)) return photo;
+  if (/^https?:\/\/\S+$/.test(photo) && photo.length <= 600) return photo;
+  throw badRequest('Photo invalide : utilisez une image JPG, PNG ou WebP.');
+}
 
 export function nextMatricule() {
   const year = new Date().getFullYear();
@@ -68,6 +82,7 @@ router.get('/', asyncHandler(async (req, res) => {
             s.guardian_phone AS guardianPhone, s.guardian_email AS guardianEmail, s.address,
             s.status, s.enrolled_at AS enrolledAt, s.notes, s.created_at AS createdAt,
             s.student_type AS studentType, s.program_id AS programId, s.academic_level AS academicLevel,
+            s.photo_thumb AS photoThumb,
             c.name AS className, c.level, c.tuition_fee AS tuitionFee,
             p.name AS programName, p.tuition_fee AS programFee,
             COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.student_id = s.id AND p.status = 'paye'), 0) AS paidTotal,
@@ -95,7 +110,8 @@ router.get('/', asyncHandler(async (req, res) => {
 router.get('/:id', asyncHandler(async (req, res) => {
   const scope = parentScope(req.user);
   const student = get(
-    `SELECT s.*, c.name AS className, c.level, c.tuition_fee AS tuitionFee,
+    `SELECT s.photo_url AS photo, s.photo_thumb AS photoThumb, s.*,
+            c.name AS className, c.level, c.tuition_fee AS tuitionFee,
             p.name AS programName, p.degree, p.tuition_fee AS programFee, f.name AS facultyName,
             t.first_name || ' ' || t.last_name AS mainTeacher
        FROM students s
@@ -162,6 +178,8 @@ router.get('/:id', asyncHandler(async (req, res) => {
 router.post('/', asyncHandler(async (req, res) => {
   if (req.user.role !== 'admin') throw forbidden();
   const data = parseBody(studentSchema, req.body);
+  data.photo = cleanPhoto(data.photo);
+  data.photoThumb = cleanPhoto(data.photoThumb);
   if (data.classId && !get('SELECT id FROM classes WHERE id = ?', data.classId)) {
     throw badRequest('La classe sélectionnée est introuvable.');
   }
@@ -170,8 +188,8 @@ router.post('/', asyncHandler(async (req, res) => {
   run(
     `INSERT INTO students (id, matricule, first_name, last_name, gender, birth_date, class_id,
        guardian_name, guardian_phone, guardian_email, address, status, student_type, program_id,
-       academic_level, enrolled_at, notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       academic_level, enrolled_at, notes, photo_url, photo_thumb, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id, data.matricule?.trim() || nextMatricule(), ...toRow(data, new Date().toISOString().slice(0, 10), ts),
   );
   // Chaque nouvel élève reçoit immédiatement sa carte (QR + code-barres + badge NFC).
@@ -193,6 +211,8 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   const existing = get('SELECT * FROM students WHERE id = ?', req.params.id);
   if (!existing) throw notFound('Élève introuvable.');
   const data = parseBody(studentSchema.partial(), req.body);
+  if (data.photo !== undefined) data.photo = cleanPhoto(data.photo);
+  if (data.photoThumb !== undefined) data.photoThumb = cleanPhoto(data.photoThumb);
   if (data.classId && !get('SELECT id FROM classes WHERE id = ?', data.classId)) {
     throw badRequest('La classe sélectionnée est introuvable.');
   }
@@ -203,7 +223,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     classId: 'class_id', guardianName: 'guardian_name', guardianPhone: 'guardian_phone',
     guardianEmail: 'guardian_email', address: 'address', status: 'status', notes: 'notes',
     matricule: 'matricule', studentType: 'student_type', programId: 'program_id',
-    academicLevel: 'academic_level',
+    academicLevel: 'academic_level', photo: 'photo_url', photoThumb: 'photo_thumb',
   };
   for (const [key, column] of Object.entries(map)) {
     if (data[key] !== undefined) {

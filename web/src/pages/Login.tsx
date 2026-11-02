@@ -22,6 +22,12 @@ const DEMO_ACCOUNTS = [
 
 const DEMO_PASSWORD = 'demo1234';
 
+/** Espace d'arrivée : la super administration pour un agent plateforme, sinon l'école. */
+function homeFor(user?: { platformRole?: string | null; tenant?: unknown } | null) {
+  if (user?.platformRole && !user.tenant) return '/plateforme';
+  return '/app';
+}
+
 export function Login() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
@@ -33,7 +39,8 @@ export function Login() {
   const [pending, setPending] = useState<string | null>(null);
 
   useEffect(() => {
-    if (user) navigate('/app', { replace: true });
+    if (user) navigate(homeFor(user), { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, navigate]);
 
   async function social(provider: 'google' | 'facebook') {
@@ -58,8 +65,8 @@ export function Login() {
     setError(null);
     setPending(key);
     try {
-      await login(nextEmail, nextPassword);
-      navigate('/app', { replace: true });
+      const account = await login(nextEmail, nextPassword);
+      navigate(homeFor(account), { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Connexion impossible. Vérifiez votre réseau.');
     } finally {

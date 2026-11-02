@@ -212,6 +212,36 @@ async function main() {
     expect(item.lastName === 'Testeur-Modifié' || item.last_name === 'Testeur-Modifié', 'modification non appliquée');
   });
 
+  await check('Élèves', 'Photo d’identité : enregistrée, conservée, retirée', async () => {
+    // PNG 1×1 valide, envoyé comme le fait le navigateur (data URL compressée).
+    const pixel = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const photo = `data:image/png;base64,${pixel}`;
+    const created = await admin.ok('POST', '/api/students', {
+      firstName: 'Photo', lastName: 'Audit', gender: 'F',
+      photo, photoThumb: photo,
+    }, 201);
+    const id = (created.student ?? created.item ?? created).id;
+    const withPhoto = await admin.ok('GET', `/api/students/${id}`);
+    if (!withPhoto.student.photo_url) throw new Error('photo non enregistrée');
+    // Une modification sans photo ne doit pas l'effacer.
+    await admin.ok('PATCH', `/api/students/${id}`, { address: 'Bacongo' });
+    const kept = await admin.ok('GET', `/api/students/${id}`);
+    expect(Boolean(kept.student.photo_url), 'photo effacée par une modification');
+    // La liste renvoie uniquement la vignette (poids maîtrisé).
+    const list = await admin.ok('GET', '/api/students');
+    const row = list.items.find((item) => item.id === id);
+    expect(row && 'photoThumb' in row && !('photo' in row), 'la liste ne doit exposer que la vignette');
+    // Une valeur non image est refusée.
+    const rejected = await admin.patch(`/api/students/${id}`, { photo: 'javascript:alert(1)' });
+    expect(rejected.status === 400, `photo invalide acceptée (${rejected.status})`);
+    // Retrait explicite.
+    await admin.ok('PATCH', `/api/students/${id}`, { photo: '', photoThumb: '' });
+    const cleared = await admin.ok('GET', `/api/students/${id}`);
+    expect(!cleared.student.photo_url, 'photo non retirée');
+    await admin.del(`/api/students/${id}`);
+    return 'photo + vignette · conservation et retrait vérifiés';
+  });
+
   await check('Élèves', 'Validation : prénom trop court → 400', async () => {
     const res = await admin.post('/api/students', { firstName: 'A', lastName: 'B' });
     expect(res.status === 400, `statut ${res.status}`);
@@ -698,6 +728,15 @@ async function main() {
     expect(json.card?.studentId === cardStudentId, 'mauvais élève résolu');
     expect(json.attendance?.status === 'present', 'présence non enregistrée');
     return `${json.card.firstName} ${json.card.lastName} · ${json.alreadyMarked ? 'déjà pointé' : 'pointé'}`;
+  });
+
+  await check('Cartes', 'Scan → absence puis présence (validation du statut)', async () => {
+    const absent = await admin.ok('POST', '/api/cards/scan', { code: cardCode, status: 'absent', source: 'qr' });
+    expect(absent.attendance?.status === 'absent', 'absence non enregistrée');
+    const present = await admin.ok('POST', '/api/cards/scan', { code: cardCode, status: 'present', source: 'qr' });
+    expect(present.attendance?.status === 'present', 'présence non rétablie');
+    expect(present.previousStatus === 'absent', 'statut précédent non signalé');
+    return 'absent → présent · statut précédent retourné';
   });
 
   await check('Cartes', 'POST /api/cards/scan (URL de badge NFC)', async () => {

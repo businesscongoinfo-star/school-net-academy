@@ -460,6 +460,9 @@ export function migrate() {
   ensureColumn('students', 'card_code', 'TEXT');
   ensureColumn('students', 'nfc_tag', 'TEXT');
   ensureColumn('students', 'card_issued_at', 'TEXT');
+  // Photo d'identité (image compressée côté navigateur, stockée en data URL)
+  ensureColumn('students', 'photo_url', 'TEXT');
+  ensureColumn('students', 'photo_thumb', 'TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS idx_students_program ON students(program_id);');
   // Plateforme multi-établissements (super administration, abonnements, agents)
   ensureColumn('users', 'platform_role', 'TEXT');

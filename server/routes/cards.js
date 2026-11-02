@@ -36,6 +36,7 @@ const baseSelect = `SELECT s.id AS studentId, s.first_name AS firstName, s.last_
        s.matricule, s.gender, s.birth_date AS birthDate, s.status, s.student_type AS studentType,
        s.academic_level AS academicLevel,
        s.card_code AS cardCode, s.nfc_tag AS nfcTag, s.card_issued_at AS issuedAt,
+       s.photo_url AS photo, s.photo_thumb AS photoThumb,
        s.guardian_name AS guardianName, s.guardian_phone AS guardianPhone,
        s.class_id AS classId, c.name AS className, c.level AS level,
        s.program_id AS programId, p.name AS programName

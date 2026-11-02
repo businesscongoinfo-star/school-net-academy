@@ -140,13 +140,19 @@ export function StatCard({
 
 /* --------------------------------- Avatar -------------------------------- */
 
-export function Avatar({ name, color, size = 'md' }: { name: string; color?: string | null; size?: 'sm' | 'md' | 'lg' }) {
+export function Avatar({ name, color, size = 'md', src }: {
+  name: string; color?: string | null; size?: 'sm' | 'md' | 'lg'; src?: string | null;
+}) {
+  const classes = clsx('avatar', size === 'sm' && 'avatar-sm', size === 'lg' && 'avatar-lg', src && 'avatar-photo');
+  if (src) {
+    return (
+      <span className={classes} aria-hidden="true">
+        <img src={src} alt="" loading="lazy" />
+      </span>
+    );
+  }
   return (
-    <span
-      className={clsx('avatar', size === 'sm' && 'avatar-sm', size === 'lg' && 'avatar-lg')}
-      style={{ background: color || 'var(--primary)' }}
-      aria-hidden="true"
-    >
+    <span className={classes} style={{ background: color || 'var(--primary)' }} aria-hidden="true">
       {initials(name)}
     </span>
   );

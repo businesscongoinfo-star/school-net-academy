@@ -61,7 +61,9 @@ export function StudentIdCard({
 
       <div className="idc-body">
         <div className="idc-identity">
-          <div className="idc-photo" aria-hidden>{initials || '—'}</div>
+          <div className="idc-photo" aria-hidden>
+            {card.photo ? <img src={card.photo} alt="" /> : (initials || '—')}
+          </div>
           <div className="idc-fields">
             <div className="idc-name">{fullName}</div>
             <div className="idc-role">

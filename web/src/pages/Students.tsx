@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Pencil, Trash2, Users, UserPlus, Wallet, GraduationCap, Phone, Mail, MapPin,
   CalendarDays, FileText, ArrowRight, SearchX, Eye, Award, AlertTriangle, Download,
-  CreditCard, Printer,
+  CreditCard, Printer, Camera, ImagePlus, UserRound, Loader2,
 } from 'lucide-react';
 import { del, get, patch, post, qs, ApiError } from '../lib/api';
 import type { ListResponse, Meta, SchoolCard, Student, StudentDetail } from '../lib/types';
@@ -19,6 +19,7 @@ import {
 import { Drawer, Modal, ConfirmDialog } from '../components/overlays';
 import { useToast } from '../components/toast';
 import { StudentIdCard } from '../components/student-card';
+import { preparePhoto } from '../lib/image';
 
 const PAGE_SIZE = 12;
 
@@ -26,12 +27,13 @@ type FormState = {
   firstName: string; lastName: string; gender: 'F' | 'M'; birthDate: string; classId: string;
   guardianName: string; guardianPhone: string; guardianEmail: string; address: string;
   status: string; notes: string; studentType: 'eleve' | 'etudiant'; programId: string; academicLevel: string;
+  photo: string; photoThumb: string;
 };
 
 const emptyForm: FormState = {
   firstName: '', lastName: '', gender: 'F', birthDate: '', classId: '',
   guardianName: '', guardianPhone: '', guardianEmail: '', address: '', status: 'actif', notes: '',
-  studentType: 'eleve', programId: '', academicLevel: '',
+  studentType: 'eleve', programId: '', academicLevel: '', photo: '', photoThumb: '',
 };
 
 export function Students() {
@@ -54,6 +56,8 @@ export function Students() {
   const [toDelete, setToDelete] = useState<Student | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [cardPreview, setCardPreview] = useState<SchoolCard | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoDirty, setPhotoDirty] = useState(false);
 
   const meta = useQuery({ queryKey: ['meta'], queryFn: () => get<Meta>('/meta') });
 
@@ -85,8 +89,25 @@ export function Students() {
   function openCreate() {
     setEditing(null);
     setForm(emptyForm);
+    setPhotoDirty(false);
     setFormError(null);
     setFormOpen(true);
+  }
+
+  /** Photo d'identité : redimensionnée et compressée avant l'envoi. */
+  async function pickPhoto(file: File | undefined) {
+    if (!file) return;
+    setPhotoBusy(true);
+    try {
+      const { photo, photoThumb } = await preparePhoto(file);
+      setForm((current) => ({ ...current, photo, photoThumb }));
+      setPhotoDirty(true);
+      setFormError(null);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Photo illisible.');
+    } finally {
+      setPhotoBusy(false);
+    }
   }
 
   function openEdit(student: Student) {
@@ -106,7 +127,10 @@ export function Students() {
       studentType: student.studentType === 'etudiant' ? 'etudiant' : 'eleve',
       programId: student.programId ?? '',
       academicLevel: student.academicLevel ?? '',
+      photo: '',
+      photoThumb: student.photoThumb ?? '',
     });
+    setPhotoDirty(false);
     setFormError(null);
     setFormOpen(true);
   }
@@ -182,13 +206,20 @@ export function Students() {
       return;
     }
     setFormError(null);
-    saveMutation.mutate({
+    const payload: Record<string, unknown> = {
       ...form,
       birthDate: form.birthDate || '',
       classId: form.studentType === 'etudiant' ? '' : form.classId || '',
       programId: form.studentType === 'etudiant' ? form.programId || '' : '',
       academicLevel: form.studentType === 'etudiant' ? form.academicLevel || '' : '',
-    });
+    };
+    // La photo n'est transmise que si elle a été choisie ou retirée : une simple
+    // modification de l'adresse ne doit pas effacer la photo existante.
+    if (!photoDirty) {
+      delete payload.photo;
+      delete payload.photoThumb;
+    }
+    saveMutation.mutate(payload as FormState);
   }
 
   function exportCsv() {
@@ -304,7 +335,7 @@ export function Students() {
                       <tr key={student.id} onClick={() => setDetailId(student.id)} style={{ cursor: 'pointer' }}>
                         <td>
                           <div className="row-avatar">
-                            <Avatar name={`${student.firstName} ${student.lastName}`} color={colorFor(student.id)} />
+                            <Avatar name={`${student.firstName} ${student.lastName}`} color={colorFor(student.id)} src={student.photoThumb} />
                             <div>
                               <div className="cell-main">{student.firstName} {student.lastName}</div>
                               <div className="cell-sub">{student.matricule} · {student.gender === 'F' ? 'Fille' : 'Garçon'}{ageFrom(student.birthDate) !== null ? ` · ${ageFrom(student.birthDate)} ans` : ''}</div>
@@ -372,6 +403,51 @@ export function Students() {
           </>
         )}
       >
+        <div className="photo-field">
+          <div className={form.photo || form.photoThumb ? 'photo-preview filled' : 'photo-preview'}>
+            {form.photo || form.photoThumb
+              ? <img src={form.photo || form.photoThumb} alt="Photo d'identité" />
+              : <UserRound size={26} />}
+          </div>
+          <div className="grow" style={{ minWidth: 0 }}>
+            <div className="strong">Photo d’identité</div>
+            <p className="tiny muted" style={{ margin: '2px 0 8px' }}>
+              Facultatif. JPG, PNG ou WebP : l’image est recadrée et compressée automatiquement,
+              puis imprimée sur la carte scolaire et affichée dans les listes de présence.
+            </p>
+            <div className="row gap-8 wrap">
+              <label className={`btn btn-secondary btn-sm${photoBusy ? ' is-busy' : ''}`} style={{ cursor: 'pointer' }}>
+                {photoBusy ? <Loader2 size={14} className="spin" /> : <Camera size={14} />}
+                <span>{form.photo || form.photoThumb ? 'Changer la photo' : 'Choisir une photo'}</span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/*"
+                  style={{ display: 'none' }}
+                  onChange={(event) => {
+                    void pickPhoto(event.target.files?.[0]);
+                    event.target.value = '';
+                  }}
+                />
+              </label>
+              {(form.photo || form.photoThumb) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setForm({ ...form, photo: '', photoThumb: '' });
+                    setPhotoDirty(true);
+                  }}
+                >
+                  Retirer
+                </Button>
+              )}
+              <span className="tiny muted row gap-6" style={{ alignItems: 'center' }}>
+                <ImagePlus size={13} /> 480 px max · environ 30 ko
+              </span>
+            </div>
+          </div>
+        </div>
+
         <div className="form-grid">
           {formError && (
             <div className="span-2" style={{ background: 'var(--danger-soft)', color: '#a52f23', padding: '9px 12px', borderRadius: 9, fontSize: 12.5 }}>
@@ -556,7 +632,7 @@ function StudentDrawer({
       ) : (
         <>
           <div className="drawer-head">
-            <Avatar name={`${student.firstName} ${student.lastName}`} color={colorFor(student.id)} size="lg" />
+            <Avatar name={`${student.firstName} ${student.lastName}`} color={colorFor(student.id)} size="lg" src={student.photo ?? student.photoThumb} />
             <div className="grow" style={{ minWidth: 0 }}>
               <div className="row gap-8 wrap">
                 <h2 style={{ fontSize: 17 }}>{student.firstName} {student.lastName}</h2>

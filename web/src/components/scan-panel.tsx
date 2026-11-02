@@ -1,13 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ScanLine, Nfc, CheckCircle2, AlertTriangle, Loader2, Keyboard, Clock3 } from 'lucide-react';
+import {
+  ScanLine, Nfc, CheckCircle2, AlertTriangle, Loader2, Keyboard, Clock3, XCircle, ShieldCheck, Undo2,
+} from 'lucide-react';
 import { post, ApiError } from '../lib/api';
 import type { CardScanResult } from '../lib/types';
 import { nfcAvailable, readNfcTag } from '../lib/nfc';
 import { Button, Input } from './ui';
 import { useToast } from './toast';
 
-type Status = 'present' | 'retard';
+type Status = 'present' | 'retard' | 'absent' | 'excuse';
+
+const STATUS_OPTIONS: { value: Status; label: string; icon: typeof CheckCircle2 }[] = [
+  { value: 'present', label: 'Présent', icon: CheckCircle2 },
+  { value: 'retard', label: 'Retard', icon: Clock3 },
+  { value: 'absent', label: 'Absent', icon: XCircle },
+  { value: 'excuse', label: 'Excusé', icon: ShieldCheck },
+];
 
 /**
  * Pointage par carte : douchette / QR (saisie clavier) ou badge NFC.
@@ -38,10 +47,14 @@ export function ScanPanel({ onScanned, defaultStatus = 'present' }: {
       queryClient.invalidateQueries({ queryKey: ['cards'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       const name = `${result.card.firstName} ${result.card.lastName}`;
-      if (result.alreadyMarked) {
-        toast.info(`${name} était déjà pointé`, `Statut : ${label(result.attendance?.status)} · ${variables.source === 'nfc' ? 'badge NFC' : 'carte'}`);
+      const statut = result.attendance?.status ?? 'present';
+      const voie = variables.source === 'nfc' ? 'badge NFC' : 'carte';
+      if (statut === 'absent') {
+        toast.info(`Absence enregistrée — ${name}`, `${result.card.matricule} · ${voie}`);
+      } else if (result.alreadyMarked) {
+        toast.info(`${name} était déjà pointé`, `Nouveau statut : ${label(statut)} · ${voie}`);
       } else {
-        toast.success(`Présence signée — ${name}`, `${result.card.matricule} · ${label(result.attendance?.status)}`);
+        toast.success(`${label(statut)} — ${name}`, `${result.card.matricule} · ${voie}`);
       }
       onScanned?.(result);
     },
@@ -95,21 +108,26 @@ export function ScanPanel({ onScanned, defaultStatus = 'present' }: {
         <div className="grow">
           <div className="strong">Pointer par carte</div>
           <div className="tiny muted">
-            Scannez le QR code, passez la carte sous la douchette, ou approchez un badge NFC.
+            Scannez le QR code, passez la carte sous la douchette ou approchez un badge NFC :
+            le statut sélectionné ({label(status).toLowerCase()}) est enregistré immédiatement.
           </div>
         </div>
         <div className="scan-status">
-          {(['present', 'retard'] as Status[]).map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={status === value ? 'chip active' : 'chip'}
-              onClick={() => setStatus(value)}
-            >
-              {value === 'present' ? <CheckCircle2 size={12} /> : <Clock3 size={12} />}
-              {value === 'present' ? 'Présent' : 'Retard'}
-            </button>
-          ))}
+          {STATUS_OPTIONS.map((option) => {
+            const Icon = option.icon;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                className={`chip${status === option.value ? ' active' : ''}${option.value === 'absent' ? ' chip-danger' : ''}`}
+                onClick={() => setStatus(option.value)}
+                title={`Enregistrer « ${option.label} » au prochain scan`}
+              >
+                <Icon size={12} />
+                {option.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -142,6 +160,12 @@ export function ScanPanel({ onScanned, defaultStatus = 'present' }: {
         )}
       </div>
 
+      <div className="tiny muted row gap-8 wrap" style={{ alignItems: 'center' }}>
+        <Undo2 size={12} />
+        Sélectionnez « Présent », « Retard », « Absent » ou « Excusé » avant de scanner : un seul geste
+        enregistre le pointage du jour.
+      </div>
+
       {!nfcAvailable() && (
         <div className="tiny muted">
           Le NFC s’active sur Android (Chrome). Ici, utilisez le QR code ou une douchette : ils sont toujours disponibles.
@@ -155,7 +179,9 @@ export function ScanPanel({ onScanned, defaultStatus = 'present' }: {
       {last && (
         <div className={last.alreadyMarked ? 'scan-result again' : 'scan-result'}>
           <span className="scan-avatar">
-            {last.card.firstName[0]}{last.card.lastName[0]}
+            {last.card.photo
+              ? <img src={last.card.photo} alt="" />
+              : <>{last.card.firstName[0]}{last.card.lastName[0]}</>}
           </span>
           <div className="grow" style={{ minWidth: 0 }}>
             <div className="strong truncate">{last.card.firstName} {last.card.lastName}</div>
@@ -164,8 +190,10 @@ export function ScanPanel({ onScanned, defaultStatus = 'present' }: {
               {last.attendance ? heure(last.attendance.createdAt) : '—'}
             </div>
           </div>
-          <span className={`scan-badge ${last.alreadyMarked ? 'again' : ''}`}>
-            {last.alreadyMarked ? 'Déjà pointé' : 'Présence signée'}
+          <span className={`scan-badge ${last.alreadyMarked ? 'again' : ''}${last.attendance?.status === 'absent' ? ' absent' : ''}`}>
+            {last.attendance?.status === 'absent'
+              ? 'Absence enregistrée'
+              : last.alreadyMarked ? 'Déjà pointé' : `${label(last.attendance?.status)} enregistré`}
           </span>
         </div>
       )}

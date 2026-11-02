@@ -66,6 +66,8 @@ export interface Student {
   programName?: string | null;
   academicLevel?: string | null;
   programFee?: number | null;
+  photo?: string | null;
+  photoThumb?: string | null;
 }
 
 export interface Payment {
@@ -415,6 +417,7 @@ export interface SchoolCard {
   schoolYear: string;
   validUntil: string;
   scanPath: string | null;
+  photo?: string | null;
 }
 
 export interface CardAttendance {
