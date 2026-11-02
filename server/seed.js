@@ -716,7 +716,8 @@ export function seed() {
 export function needsRepair() {
   try {
     const demo = get("SELECT COUNT(*) AS c FROM users WHERE email = 'direction@schoolnet.academy'");
-    if (!demo || demo.c === 0) return false;
+    const tenant = get("SELECT COUNT(*) AS c FROM tenants WHERE id = 'tnt_demo'");
+    if ((!demo || demo.c === 0) && (!tenant || tenant.c === 0)) return false;
     const students = get('SELECT COUNT(*) AS c FROM students')?.c ?? 0;
     const classes = get('SELECT COUNT(*) AS c FROM classes')?.c ?? 0;
     return students === 0 && classes === 0;

@@ -118,6 +118,15 @@ export const ready = (async () => {
     superAdminAliases: admins?.aliases?.map((account) => account.email) ?? [],
     persistence: persistenceMode(),
     users: (() => { try { return dbGet('SELECT COUNT(*) AS c FROM users')?.c ?? 0; } catch { return null; } })(),
+    counts: (() => {
+      try {
+        return {
+          students: dbGet('SELECT COUNT(*) AS c FROM students')?.c ?? 0,
+          classes: dbGet('SELECT COUNT(*) AS c FROM classes')?.c ?? 0,
+          teachers: dbGet('SELECT COUNT(*) AS c FROM teachers')?.c ?? 0,
+        };
+      } catch { return null; }
+    })(),
     steps,
   };
   await step('flush', () => (isDirty() ? flush() : null));
