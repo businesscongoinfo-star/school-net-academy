@@ -110,7 +110,7 @@ puis les blocs pleine largeur.
 | Sécurité | Réservé aux rôles direction/enseignant ; le parent reçoit 403 |
 
 Vérifications ajoutées à l'audit (8) : liste, détail, scan QR, scan URL de badge, carte inconnue,
-signature manuelle, association NFC + réémission, contrôle d'accès parent, intégrations Supabase et e-mails → **120/120** (dont 26
+signature manuelle, association NFC + réémission, contrôle d'accès parent, intégrations Supabase et e-mails → **122/122** (dont 28
 vérifications dédiées à la plateforme : inscription, essai, blocage, RBAC, newsletter, IA).
 
 ---
@@ -122,7 +122,7 @@ vérifications dédiées à la plateforme : inscription, essai, blocage, RBAC, n
 | Typage de l'interface | `npm run typecheck` (TypeScript strict) | ✅ 0 erreur |
 | Compilation production | `npm run build` (Vite) | ✅ 1,1 s |
 | Rendu de toutes les pages | `node scripts/smoke.mjs` | ✅ 28/28 pages, avec contrôle du contenu attendu |
-| Recette fonctionnelle de l'API | `npm run audit` | ✅ **120/120 vérifications** |
+| Recette fonctionnelle de l'API | `npm run audit` | ✅ **122/122 vérifications** |
 | API simulée de la démo statique | `node scripts/test-demo-mock.mjs` | ✅ 35 routes |
 | Déploiement serverless | Vercel (production) | ✅ `READY` / `PROMOTED` |
 
@@ -209,7 +209,7 @@ reconstruction de la démo statique (`docs/`) avec les nouvelles fonctionnalité
 ## 5. Qualité / non-régression
 
 ```bash
-npm run check   # typecheck + build + rendu des 28 pages + 120 vérifications API
+npm run check   # typecheck + build + rendu des 28 pages + 122 vérifications API
 ```
 
 - `scripts/audit.mjs` — **nouveau** : recette fonctionnelle de bout en bout.

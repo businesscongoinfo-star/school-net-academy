@@ -156,7 +156,7 @@ configuration CORS, des URL relatives partout.
 | `npm run seed:reset` | Efface et régénère les données de démonstration |
 | `npm run typecheck` | Vérification TypeScript de l'interface |
 | `node scripts/smoke.mjs` | Test de rendu de toutes les pages avec les données réelles |
-| `npm run audit` | Recette fonctionnelle de l'API : 120 vérifications (CRUD, droits, plateforme, intégrations, erreurs) |
+| `npm run audit` | Recette fonctionnelle de l'API : 122 vérifications (CRUD, droits, plateforme, intégrations, IA, erreurs) |
 | `npm run check` | Enchaîne typecheck + build + rendu des pages + audit API |
 
 ### Développement avec rechargement à chaud

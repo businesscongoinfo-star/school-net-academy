@@ -79,6 +79,27 @@ export function smsConfig() {
   };
 }
 
+/**
+ * Assistant IA : clé OpenAI + modèle. La clé saisie dans l'interface prend le
+ * pas sur `OPENAI_API_KEY`, ce qui permet d'activer l'assistant sans redéploiement.
+ */
+export function aiConfig() {
+  const stored = getSetting('ai', {}) || {};
+  const apiKey = stored.apiKey || process.env.OPENAI_API_KEY || '';
+  return {
+    apiKey,
+    model: stored.model || process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    temperature: Number(stored.temperature ?? 0.5),
+    maxTokens: Number(stored.maxTokens ?? 400),
+    source: stored.apiKey ? 'interface' : (process.env.OPENAI_API_KEY ? 'environnement' : null),
+    origin: stored.apiKey ? 'settings' : (process.env.OPENAI_API_KEY ? 'env' : null),
+  };
+}
+
+export function aiReady() {
+  return Boolean(aiConfig().apiKey);
+}
+
 /** SMTP « prêt » = hôte + identifiants (ou Resend avec clé). */
 export function mailReady() {
   const config = mailConfig();

@@ -10,7 +10,7 @@ import {
   FX_RATES, SUPPORTED_CURRENCIES, convert, formatMoney,
 } from '../platform.js';
 import { sendMail, welcomeEmail, newsletterEmail, mailerStatus, recentEmails, emailBrand } from '../mailer.js';
-import { getSetting, setSetting, publicSettings, mailConfig, mailReady, smsConfig } from '../settings.js';
+import { getSetting, setSetting, publicSettings, mailConfig, mailReady, smsConfig, aiConfig, aiReady } from '../settings.js';
 import { syncAuthUser, deleteAuthUser, supabaseStatus, logEvent } from '../supabase.js';
 import { persistenceStatus } from '../persist.js';
 
@@ -677,6 +677,7 @@ router.get('/integrations', requirePlatform('manager', 'support', 'marketing', '
     mail: { ...mail, smtp: { host: mailConfig().smtp.host, port: mailConfig().smtp.port, user: mailConfig().smtp.user } },
     persistence: persistenceStatus(),
     sms: { configured: Boolean(smsConfig().url && smsConfig().apiKey), sender: smsConfig().sender },
+    ai: { configured: aiReady(), model: aiConfig().model, origin: aiConfig().origin },
     settings: publicSettings(),
     emails: recentEmails(30),
     brand: { site: emailBrand.site, contact: emailBrand.contact },
@@ -724,6 +725,67 @@ router.post('/integration/mail/test', requirePlatform('owner', 'manager'), async
            <p>Expéditeur : <strong>${emailBrand.name}</strong></p>`,
   });
   res.json({ ok: result.status === 'envoye', ...result, configured: mailReady(), mail: mailerStatus() });
+}));
+
+router.put('/integration/ai', requirePlatform('owner', 'manager'), asyncHandler(async (req, res) => {
+  const data = parseBody(z.object({
+    apiKey: z.string().max(300).nullable().optional(),
+    model: z.string().max(60).nullable().optional(),
+    temperature: z.coerce.number().min(0).max(1.5).nullable().optional(),
+  }), req.body);
+
+  const current = getSetting('ai', {}) || {};
+  const next = { ...current };
+  if (data.apiKey !== undefined && !String(data.apiKey ?? '').startsWith('•••')) next.apiKey = String(data.apiKey ?? '').trim();
+  if (data.model !== undefined && data.model) next.model = data.model;
+  if (data.temperature !== undefined && data.temperature !== null) next.temperature = data.temperature;
+  setSetting('ai', next);
+  await logEvent('ai_settings_updated', { model: next.model ?? null, configured: Boolean(next.apiKey) });
+  res.json({ ok: true, ai: { configured: aiReady(), model: aiConfig().model, origin: aiConfig().origin } });
+}));
+
+router.post('/integration/ai/test', requirePlatform('owner', 'manager'), asyncHandler(async (req, res) => {
+  const config = aiConfig();
+  if (!config.apiKey) {
+    res.json({ ok: false, error: 'Aucune clé API enregistrée.', configured: false });
+    return;
+  }
+  const startedAt = Date.now();
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
+      body: JSON.stringify({
+        model: config.model,
+        max_tokens: 40,
+        messages: [
+          { role: 'system', content: 'Tu réponds en français, en une phrase.' },
+          { role: 'user', content: 'Dis simplement : assistant School Net Academy opérationnel.' },
+        ],
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`OpenAI ${response.status} — ${body.slice(0, 160)}`);
+    }
+    const payload = await response.json();
+    res.json({
+      ok: true,
+      configured: true,
+      model: payload?.model ?? config.model,
+      latencyMs: Date.now() - startedAt,
+      answer: payload?.choices?.[0]?.message?.content?.trim()?.slice(0, 160) ?? '',
+      tokens: payload?.usage?.total_tokens ?? null,
+    });
+  } catch (error) {
+    res.status(502).json({
+      ok: false,
+      configured: true,
+      error: String(error?.message ?? error).slice(0, 220),
+      latencyMs: Date.now() - startedAt,
+    });
+  }
 }));
 
 router.put('/integration/sms', requirePlatform('owner', 'manager'), asyncHandler(async (req, res) => {

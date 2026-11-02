@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { parseBody, asyncHandler } from '../helpers.js';
+import { aiConfig, aiReady } from '../settings.js';
+import { logEvent } from '../supabase.js';
 
 const router = Router();
 
@@ -102,7 +104,8 @@ router.post('/chat', asyncHandler(async (req, res) => {
   }), req.body);
 
   const question = [...data.messages].reverse().find((message) => message.role === 'user')?.content ?? '';
-  const apiKey = process.env.OPENAI_API_KEY;
+  const config = aiConfig();
+  const apiKey = config.apiKey;
 
   if (!apiKey) {
     res.json({ reply: localAnswer(question), source: 'local' });
@@ -114,27 +117,50 @@ router.post('/chat', asyncHandler(async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-        temperature: 0.5,
-        max_tokens: 400,
+        model: config.model,
+        temperature: config.temperature,
+        max_tokens: config.maxTokens,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           ...data.messages.slice(-8).map((message) => ({ role: message.role, content: message.content.slice(0, 1200) })),
         ],
       }),
     });
-    if (!response.ok) throw new Error(`OpenAI ${response.status}`);
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      const reason = response.status === 401 ? 'clé API refusée'
+        : response.status === 429 ? 'quota ou débit dépassé'
+          : response.status === 404 ? 'modèle introuvable'
+            : `erreur ${response.status}`;
+      throw new Error(`${reason}${detail ? ` — ${detail.slice(0, 120)}` : ''}`);
+    }
     const payload = await response.json();
     const reply = payload?.choices?.[0]?.message?.content?.trim();
     if (!reply) throw new Error('réponse vide');
-    res.json({ reply, source: 'openai' });
+    await logEvent('ai_chat', {
+      model: config.model, origin: config.origin,
+      tokens: payload?.usage?.total_tokens ?? null, characters: reply.length,
+    });
+    res.json({ reply, source: 'openai', model: config.model });
   } catch (error) {
+    await logEvent('ai_chat_error', { model: config.model, error: String(error?.message ?? error).slice(0, 200) });
     res.json({
       reply: localAnswer(question),
       source: 'local',
-      note: `Assistant IA indisponible (${String(error?.message ?? error).slice(0, 80)}).`,
+      note: `Assistant IA indisponible (${String(error?.message ?? error).slice(0, 120)}).`,
     });
   }
 }));
+
+/** État de l'assistant (modèle configuré, sans jamais exposer la clé). */
+router.get('/status', (req, res) => {
+  const config = aiConfig();
+  res.json({
+    configured: aiReady(),
+    model: config.model,
+    origin: config.origin,
+    fallback: 'Base de connaissances locale (français)',
+  });
+});
 
 export default router;

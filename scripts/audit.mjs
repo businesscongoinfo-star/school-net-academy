@@ -1051,6 +1051,26 @@ async function main() {
     return `jeton ${json.expiresIn}s · redirection ${res.status}`;
   });
 
+  await check('Intégrations', 'Assistant IA : état exposé sans la clé', async () => {
+    const res = await fetch(`${BASE}/api/ai/status`);
+    const json = await res.json();
+    expect(typeof json.configured === 'boolean', 'état IA absent');
+    expect(typeof json.model === 'string', 'modèle absent');
+    expect(JSON.stringify(json).includes('sk-') === false, 'une clé fuite dans l’état');
+    return `${json.configured ? 'OpenAI' : 'base locale'} · ${json.model}`;
+  });
+
+  await check('Intégrations', 'Assistant IA : clé refusée → repli local', async () => {
+    const saved = await superClient.ok('PUT', '/api/platform/integration/ai', { apiKey: 'sk-test-invalide', model: 'gpt-4o-mini' });
+    expect(saved.ai?.configured === true, 'clé non enregistrée');
+    const chat = await superClient.ok('POST', '/api/ai/chat', { messages: [{ role: 'user', content: 'Quels sont vos tarifs ?' }] });
+    expect(typeof chat.reply === 'string' && chat.reply.length > 10, 'aucune réponse');
+    expect(chat.source === 'local', 'le repli local aurait dû prendre le relais');
+    const cleared = await superClient.ok('PUT', '/api/platform/integration/ai', { apiKey: '', model: 'gpt-4o-mini' });
+    expect(cleared.ai?.configured === false || process.env.OPENAI_API_KEY, 'clé non effacée');
+    return 'repli local opérationnel';
+  });
+
   await check('Intégrations', 'Réinitialisation : e-mail mis en file', async () => {
     const res = await new Client('forgot').post('/api/auth/forgot', { email: 'direction@schoolnet.academy' });
     expect(res.status === 200, `statut ${res.status}`);

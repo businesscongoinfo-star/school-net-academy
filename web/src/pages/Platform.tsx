@@ -664,7 +664,7 @@ function StaffTab({ canWrite, onChanged }: { canWrite: boolean; onChanged: () =>
 
   return (
     <div className="stack gap-16">
-      <div className="grid grid-3">
+      <div className="grid grid-4">
         {(Object.keys(PLATFORM_ROLE_LABEL) as PlatformRole[]).filter((role) => role !== 'owner').map((role) => {
           const Icon = ROLE_ICON[role];
           const count = items.filter((member) => member.platformRole === role).length;
@@ -813,7 +813,7 @@ function SubscriptionsTab({ onChanged }: { onChanged: () => void }) {
 
   return (
     <div className="stack gap-16">
-      <div className="grid grid-3">
+      <div className="grid grid-4">
         <StatCard label="Paiements enregistrés" value={formatNumber(data?.stats.count ?? 0)} icon={CreditCard} />
         <StatCard label="Encaissé (équivalent FCFA)" value={formatCurrency(data?.stats.total ?? 0, 'XAF')} icon={Wallet} tone="primary" />
         <StatCard label="Panier moyen" value={formatCurrency(data?.stats.count ? Math.round((data.stats.total ?? 0) / data.stats.count) : 0, 'XAF')} icon={TrendingUp} />
@@ -1068,7 +1068,7 @@ function SmsTab() {
 
   return (
     <div className="stack gap-16">
-      <div className="grid grid-3">
+      <div className="grid grid-4">
         <StatCard label="SMS journalisés" value={formatNumber(data?.stats.total ?? 0)} icon={MessageSquare} />
         <StatCard label="Envoyés (opérateur)" value={formatNumber(data?.stats.envoyes ?? 0)} icon={Send} tone="primary" />
         <StatCard label="Simulés" value={formatNumber(data?.stats.simules ?? 0)} icon={Headphones} foot="Aucun opérateur configuré" />
@@ -1134,6 +1134,7 @@ type IntegrationsPayload = {
   };
   persistence: { mode: string; version: number | null; lastSyncAt: string | null; lastError: string | null };
   sms: { configured: boolean; sender: string };
+  ai: { configured: boolean; model: string; origin: string | null };
   settings: { key: string; value: Record<string, unknown>; updatedAt: string }[];
   emails: { id: string; to: string; subject: string; kind: string; status: string; provider: string | null; error: string | null; createdAt: string; sentAt: string | null }[];
 };
@@ -1153,6 +1154,7 @@ function IntegrationsTab() {
   });
   const [testTo, setTestTo] = useState('businesscongo.inf@gmail.com');
   const [initialised, setInitialised] = useState(false);
+  const [aiForm, setAiForm] = useState({ apiKey: '', model: 'gpt-4o-mini' });
 
   // Pré-remplissage depuis les réglages enregistrés
   if (data && !initialised) {
@@ -1187,6 +1189,29 @@ function IntegrationsTab() {
     onError: (err) => toastError(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
   });
 
+  const saveAi = useMutation({
+    mutationFn: () => put('/platform/integration/ai', {
+      apiKey: aiForm.apiKey || undefined,
+      model: aiForm.model,
+    }),
+    onSuccess: () => {
+      success('Clé OpenAI enregistrée : l’assistant répond désormais via le modèle.');
+      setAiForm({ ...aiForm, apiKey: '' });
+      queryClient.invalidateQueries({ queryKey: ['platform'] });
+    },
+    onError: (err) => toastError(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
+  });
+
+  const testAi = useMutation({
+    mutationFn: () => post<{ ok: boolean; latencyMs?: number; model?: string; answer?: string; error?: string }>('/platform/integration/ai/test', {}),
+    onSuccess: (result) => {
+      if (result.ok) success(`Modèle ${result.model} opérationnel (${result.latencyMs} ms).`);
+      else toastError(result.error ?? 'Test impossible.');
+      queryClient.invalidateQueries({ queryKey: ['platform'] });
+    },
+    onError: (err) => toastError(err instanceof ApiError ? err.message : 'Test impossible.'),
+  });
+
   const testMail = useMutation({
     mutationFn: () => post<{ ok: boolean; status: string; error?: string }>('/platform/integration/mail/test', { to: testTo }),
     onSuccess: (result) => {
@@ -1207,7 +1232,7 @@ function IntegrationsTab() {
 
   return (
     <div className="stack gap-16">
-      <div className="grid grid-3">
+      <div className="grid grid-4">
         <Card className="card-pad">
           <div className="row gap-10">
             <span className={`status-dot ${supabase?.configured ? 'on' : 'off'}`} />
@@ -1247,6 +1272,21 @@ function IntegrationsTab() {
           </div>
           <p className="small muted" style={{ marginTop: 10 }}>
             {persistence?.lastSyncAt ? `Dernière sauvegarde : ${formatDateTime(persistence.lastSyncAt)}` : 'Aucune sauvegarde encore.'}
+          </p>
+        </Card>
+        <Card className="card-pad">
+          <div className="row gap-10">
+            <span className={`status-dot ${data?.ai?.configured ? 'on' : 'off'}`} />
+            <div className="grow">
+              <div className="strong">Assistant IA</div>
+              <div className="tiny muted">{data?.ai?.configured ? data.ai.model : 'Base locale'}</div>
+            </div>
+            <Badge tone={data?.ai?.configured ? 'success' : 'neutral'}>
+              {data?.ai?.configured ? 'OpenAI' : 'Local'}
+            </Badge>
+          </div>
+          <p className="small muted" style={{ marginTop: 10 }}>
+            {data?.ai?.configured ? 'Réponses générées par OpenAI.' : 'Réponses issues de la base de connaissances.'}
           </p>
         </Card>
       </div>
