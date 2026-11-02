@@ -29,14 +29,14 @@ const TMP_SNAPSHOT = () => path.join(path.dirname(dbFile()), `.snapshot-${proces
 
 export const persistenceMode = () => (supabaseConfigured ? 'supabase' : 'local');
 
-async function fetchState() {
-  const rows = await rest(`/app_state?id=eq.${STATE_ID}&select=version,payload,updated_at`);
+async function fetchState(timeout) {
+  const rows = await rest(`/app_state?id=eq.${STATE_ID}&select=version,payload,updated_at`, timeout ? { timeout } : {});
   return Array.isArray(rows) && rows[0] ? rows[0] : null;
 }
 
 /** Version distante seule (contrôle anti-écrasement, réponse minuscule). */
-async function remoteVersion() {
-  const rows = await rest(`/app_state?id=eq.${STATE_ID}&select=version`);
+async function remoteVersion(timeout) {
+  const rows = await rest(`/app_state?id=eq.${STATE_ID}&select=version`, timeout ? { timeout } : {});
   return Array.isArray(rows) && rows[0] ? Number(rows[0].version ?? 0) : 0;
 }
 
@@ -44,18 +44,27 @@ async function remoteVersion() {
 export async function restore() {
   if (!supabaseConfigured) return { restored: false, mode: 'local' };
   try {
-    // Jusqu'à trois tentatives, avec un budget total de 25 s : le premier appel à
-    // froid dépasse souvent le délai, mais on ne doit jamais dépasser la limite
+    // Le premier appel réseau d'une instance à froid est parfois très lent :
+    // une requête minuscule « réchauffe » la connexion, puis l'instantané est
+    // téléchargé avec un délai généreux. Budget total 25 s, sous la limite
     // d'exécution de la fonction serverless (60 s).
     const deadline = Date.now() + 25_000;
-    let state = null;
     const attempts = [];
-    for (let attempt = 1; attempt <= 3 && !state && Date.now() < deadline; attempt += 1) {
+    try {
+      const started = Date.now();
+      await remoteVersion(Math.min(6_000, Math.max(3_000, deadline - Date.now())));
+      attempts.push(`réchauffement : ${Date.now() - started} ms`);
+    } catch (error) {
+      attempts.push(`réchauffement : ${error.message}`);
+    }
+    let state = null;
+    for (let attempt = 1; attempt <= 2 && !state && Date.now() < deadline; attempt += 1) {
+      const started = Date.now();
       try {
-        state = await fetchState();
-        if (!state?.payload) attempts.push(`essai ${attempt} : instantané absent`);
+        state = await fetchState(Math.min(15_000, Math.max(5_000, deadline - Date.now())));
+        if (!state?.payload) attempts.push(`essai ${attempt} : instantané absent (${Date.now() - started} ms)`);
       } catch (error) {
-        attempts.push(`essai ${attempt} : ${error.message}`);
+        attempts.push(`essai ${attempt} : ${error.message} (${Date.now() - started} ms)`);
       }
     }
     if (!state?.payload) {

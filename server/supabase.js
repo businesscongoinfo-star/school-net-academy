@@ -23,7 +23,7 @@ export const supabaseAuthEnabled = Boolean(SUPABASE_URL && (SERVICE_KEY || SUPAB
 
 const TIMEOUT = Number(process.env.SUPABASE_TIMEOUT_MS || 15_000);
 
-async function request(path, { method = 'GET', body, headers = {}, key = SERVICE_KEY } = {}) {
+async function request(path, { method = 'GET', body, headers = {}, key = SERVICE_KEY, timeout = TIMEOUT } = {}) {
   if (!SUPABASE_URL) throw new Error('Supabase non configuré (SUPABASE_URL manquant).');
   const res = await fetch(`${SUPABASE_URL}${path}`, {
     method,
@@ -34,7 +34,7 @@ async function request(path, { method = 'GET', body, headers = {}, key = SERVICE
       ...headers,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(TIMEOUT),
+    signal: AbortSignal.timeout(timeout),
   });
   const text = await res.text();
   let data = null;
