@@ -171,13 +171,16 @@ app.use((req, res, next) => {
 app.use(requestLogger);
 
 app.get('/api/health', (req, res) => {
+  const persistence = persistenceStatus();
   res.json({
     ok: true,
     service: 'school-net-academy',
     time: new Date().toISOString(),
-    persistence: persistenceStatus().mode,
+    persistence: persistence.mode,
+    snapshot: { version: persistence.version, lastSyncAt: persistence.lastSyncAt, error: persistence.lastError },
     supabase: supabaseStatus().configured,
     email: mailerStatus().configured ? mailerStatus().provider : 'non configuré',
+    boot: bootInfo(),
   });
 });
 

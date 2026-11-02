@@ -79,3 +79,58 @@ Variables optionnelles, même principe : `SMS_API_URL` + `SMS_API_KEY` (SMS rée
   le débit Mobile Money/carte est simulé.
 - Sans opérateur SMS configuré, les messages sont journalisés (statut `simule`) plutôt qu'envoyés.
 - La connexion Google/Facebook nécessite les identifiants OAuth du fournisseur.
+
+---
+
+## 6. Intégration Supabase & e-mails (mise à jour du 2 novembre 2026)
+
+**Supabase est branché en production** (projet `sskqhiyebnlvdntmmhjb`, région Europe de l'Ouest) :
+
+- **Données durables** : un instantané compressé de la base est enregistré dans la table
+  `app_state` à chaque écriture et restauré au démarrage de chaque instance. Les comptes,
+  établissements et abonnements créés **survivent** donc aux redéploiements et aux
+  redémarrages serverless (plus de perte au bout de quelques minutes).
+- **E-mails de réinitialisation réels** : Supabase Auth envoie le lien (`/auth/v1/recover`)
+  et le retour se fait sur `/reinitialiser`. Les comptes de l'application sont
+  automatiquement miroir dans Supabase Auth (à la connexion, à la création, au changement
+  de mot de passe).
+- **Journal d'accès** : `access_events` (connexions, inscriptions, campagnes, changements
+  de configuration).
+
+**Compte super administrateur réel**
+
+| Identifiant | Mot de passe |
+| --- | --- |
+| `businesscongo.inf@gmail.com` | celui que vous avez fourni |
+
+Il est créé à chaque démarrage depuis les variables Vercel `SUPERADMIN_EMAIL` /
+`SUPERADMIN_PASSWORD` (jamais présent dans le dépôt). Rôle : **propriétaire de la
+plateforme** → accès à `/plateforme` (ses 7 onglets, dont **Intégrations**).
+
+**Créer un établissement et son compte (mot de passe généré)**
+
+`/plateforme` → **Établissements** → **Nouvel établissement** : nom, type (école /
+université), pays et devise, responsable et e-mail. L'application génère un mot de passe
+provisoire du type `Sna-XXXX-XXXX`, l'affiche avec un bouton de copie et l'envoie au
+responsable. Le bouton **Ouvrir** entre ensuite dans l'espace du client (jeton à usage
+unique de 15 minutes) pour terminer le paramétrage.
+
+**Envoyer de vrais e-mails (newsletter, reçus, identifiants)**
+
+Supabase ne peut envoyer que les e-mails d'authentification (quota faible). Pour les
+campagnes et les notifications, deux possibilités **sans redéploiement** :
+
+1. `/plateforme` → **Intégrations** → fournisseur **Resend** (clé API `re_…`, gratuit
+   jusqu'à 3 000 e-mails/mois) → **Enregistrer** → **Envoyer un test**.
+2. Ou fournisseur **SMTP** (Gmail avec mot de passe d'application, Brevo, Mailjet…) :
+   serveur, port, utilisateur, mot de passe.
+
+Tant qu'aucun expéditeur n'est configuré, chaque message (identifiants, reçus, newsletter,
+réinitialisation) est **conservé en file d'attente** et visible dans l'onglet Intégrations —
+rien n'est perdu, il suffit du bouton « Enregistrer » pour que la file s'écoule.
+
+**Variables Vercel ajoutées**
+
+`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (secrète), `SUPABASE_PUBLISHABLE_KEY`,
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPERADMIN_EMAIL`,
+`SUPERADMIN_PASSWORD` (secrète), `SUPERADMIN_NAME`, `APP_URL`, `MAIL_REPLY_TO`.
