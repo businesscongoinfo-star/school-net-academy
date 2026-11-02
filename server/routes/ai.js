@@ -90,7 +90,7 @@ function localAnswer(question) {
   if (best) return best.answer;
   return "Je peux vous aider sur les élèves et étudiants, les paiements, les cartes scolaires (QR/NFC), "
     + "les présences, les abonnements et la newsletter. Précisez votre question ou écrivez à "
-    + "support@schoolnet.academy : l'équipe répond du lundi au vendredi, de 7h30 à 16h00.";
+    + "businesscongo.inf@gmail.com : l'équipe répond du lundi au vendredi, de 7h30 à 16h00.";
 }
 
 router.post('/chat', asyncHandler(async (req, res) => {

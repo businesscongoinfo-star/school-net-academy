@@ -270,7 +270,7 @@ export function Billing() {
           <div className="grow">
             <strong>Besoin d'une facture ou d'un devis ?</strong>
             <p className="small muted">
-              Écrivez à <a href="mailto:facturation@schoolnet.academy">facturation@schoolnet.academy</a> — réponse sous 24 h ouvrées.
+              Écrivez à <a href="mailto:businesscongo.inf@gmail.com">businesscongo.inf@gmail.com</a> — réponse sous 24 h ouvrées.
               {data?.tenant ? ` Devise de facturation : ${data.tenant.currency}.` : ''}
               {data?.tenant ? ` Utilisateurs inclus : ${formatNumber(data.tenant.seats ?? 0)}.` : ''}
             </p>

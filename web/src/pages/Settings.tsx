@@ -234,7 +234,7 @@ export function Settings() {
                 <h3 style={{ fontSize: 14.5 }}>Support</h3>
               </div>
               <p className="small muted">
-                Secrétariat : +242 06 512 44 18 · contact@schoolnet.academy<br />
+                Secrétariat : +242 06 512 44 18 · businesscongo.inf@gmail.com<br />
                 Horaires : lundi au vendredi, 7h30 – 16h00.
               </p>
             </Card>
