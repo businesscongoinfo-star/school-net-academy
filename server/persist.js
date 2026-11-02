@@ -49,10 +49,20 @@ export async function restore() {
     // d'exécution de la fonction serverless (60 s).
     const deadline = Date.now() + 25_000;
     let state = null;
-    for (let attempt = 0; attempt < 3 && !state && Date.now() < deadline; attempt += 1) {
-      state = await fetchState().catch(() => null);
+    const attempts = [];
+    for (let attempt = 1; attempt <= 3 && !state && Date.now() < deadline; attempt += 1) {
+      try {
+        state = await fetchState();
+        if (!state?.payload) attempts.push(`essai ${attempt} : instantané absent`);
+      } catch (error) {
+        attempts.push(`essai ${attempt} : ${error.message}`);
+      }
     }
-    if (!state?.payload) return { restored: false, mode: 'supabase', version: 0 };
+    if (!state?.payload) {
+      lastError = attempts.join(' · ') || 'instantané distant introuvable';
+      console.error('[persist] restauration impossible :', lastError);
+      return { restored: false, mode: 'supabase', version: 0, attempts };
+    }
     const buffer = zlib.gunzipSync(Buffer.from(state.payload, 'base64'));
     fs.mkdirSync(path.dirname(dbFile()), { recursive: true });
     for (const suffix of ['', '-wal', '-shm']) fs.rmSync(`${dbFile()}${suffix}`, { force: true });

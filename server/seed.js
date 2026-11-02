@@ -661,12 +661,16 @@ export function seed() {
   const insertCampaign = db.prepare(`INSERT INTO newsletter_campaigns
     (id, subject, body, audience, status, recipients, sent_at, created_by, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  // Auteur des campagnes : un membre de l'équipe plateforme si les comptes de
+  // démonstration existent (pas sur Vercel), sinon l'administrateur de l'école.
+  const campaignAuthor = staffIds[4]?.id ?? userIds.admin;
+
   insertCampaign.run(id('nwc'), 'Rentrée : les nouvelles fonctions de School Net Academy',
     "Bonjour,\n\nCette rentrée apporte les cartes scolaires à QR code et badge NFC, le pointage sans contact, les SMS aux parents et un assistant IA.\n\nToute l'équipe reste disponible pour une démonstration.\n\n— L'équipe School Net Academy",
-    'abonnes', 'envoyee', 20, iso(-12, 9), staffIds[4].id, stamp);
+    'abonnes', 'envoyee', 20, iso(-12, 9), campaignAuthor, stamp);
   insertCampaign.run(id('nwc'), 'Offre Pro : —20 % pour les universités',
     "Bonjour,\n\nLes établissements d'enseignement supérieur bénéficient de 20 % de remise sur l'offre Université jusqu'à la fin du mois.\n\nRépondez à cet e-mail pour réserver un créneau.",
-    'abonnes', 'brouillon', 0, null, staffIds[4].id, stamp);
+    'abonnes', 'brouillon', 0, null, campaignAuthor, stamp);
 
   const insertNotification = db.prepare(`INSERT INTO notifications
     (id, user_id, tenant_id, kind, title, body, link, read_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);

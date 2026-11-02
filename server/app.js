@@ -66,7 +66,12 @@ export const ready = (async () => {
       return value;
     } catch (error) {
       const message = String(error?.message ?? error);
-      steps[name] = `échec : ${message}`;
+      // Localisation compacte (fichier:ligne) pour diagnostiquer sans exposer la pile.
+      const stack = String(error?.stack ?? '').split(String.fromCharCode(10));
+      const frame = stack.find((line) => line.includes('server/') || line.includes('server\\')) ?? '';
+      const found = frame.match(/server[\\/][^):]+:\d+/);
+      const where = found ? found[0].split('\\').join('/') : '';
+      steps[name] = where ? `échec : ${message} (${where})` : `échec : ${message}`;
       console.error(`[boot] ${name} :`, error);
       return null;
     }
