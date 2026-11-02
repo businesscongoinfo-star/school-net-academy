@@ -8,13 +8,17 @@ import { Logo } from '../components/logo';
 import { Button, Field, Input } from '../components/ui';
 import { Avatar } from '../components/ui';
 
+const DEMO_ENV = ((import.meta as unknown as { env?: Record<string, string | boolean> }).env ?? {});
+/** Les comptes de démonstration de la plateforme restent réservés à la démo statique. */
+const SHOW_PLATFORM_DEMO = Boolean(DEMO_ENV.DEV) || DEMO_ENV.VITE_DEMO === '1';
+
 const DEMO_ACCOUNTS = [
   { email: 'direction@schoolnet.academy', name: 'Chancelle Mabiala', role: 'Direction', color: '#0f766e' },
   { email: 'prof.mbemba@schoolnet.academy', name: 'Prosper Mbemba', role: 'Enseignant', color: '#b45309' },
   { email: 'parent.ondongo@schoolnet.academy', name: 'Nadège Ondongo', role: 'Parent', color: '#7c3aed' },
   { email: 'superadmin@schoolnet.academy', name: 'Ariane Okemba', role: 'Super admin', color: '#0e7490' },
   { email: 'essai@schoolnet.academy', name: 'Patrick Loemba', role: 'Essai expiré', color: '#b45309' },
-];
+].filter((account) => SHOW_PLATFORM_DEMO || account.role !== 'Super admin');
 
 const DEMO_PASSWORD = 'demo1234';
 

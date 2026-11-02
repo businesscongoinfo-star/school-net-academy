@@ -624,12 +624,16 @@ export function seed() {
     ['marketing@schoolnet.academy', 'Grace Loubota', 'marketing', 'Marketing & newsletter'],
     ['closer@schoolnet.academy', 'Yan Mabiala', 'closer', 'Closer — conversions'],
   ];
+  // En production, l'équipe de démonstration n'est pas créée : le propriétaire
+  // réel (SUPERADMIN_EMAIL) et les agents créés depuis l'interface suffisent.
+  // La démonstration statique (docs/) et le développement local la conservent.
+  const withDemoStaff = !process.env.VERCEL || process.env.SEED_DEMO_STAFF === '1';
   const staffIds = [];
   const FIXED_STAFF_IDS = {
     owner: 'usr_platform_owner', manager: 'usr_platform_manager', support: 'usr_platform_support',
     finance: 'usr_platform_finance', marketing: 'usr_platform_marketing', closer: 'usr_platform_closer',
   };
-  platformStaff.forEach(([email, name, platformRole, title]) => {
+  (withDemoStaff ? platformStaff : []).forEach(([email, name, platformRole, title]) => {
     const sid = FIXED_STAFF_IDS[platformRole] ?? id('usr');
     staffIds.push({ id: sid, platformRole, name });
     db.prepare(`INSERT INTO users (id, email, password_hash, name, role, phone, title, avatar_color,
