@@ -707,6 +707,24 @@ export function seed() {
 
 /* ------------------------------------------------------------------ */
 
+/**
+ * Détecte une base de démonstration incomplète : les comptes de l'école de
+ * démonstration existent mais aucune classe ni aucun élève. Cela se produit
+ * quand une instance a été interrompue en pleine initialisation (démarrage à
+ * froid, redéploiement) et que cet état partiel a été sauvegardé.
+ */
+export function needsRepair() {
+  try {
+    const demo = get("SELECT COUNT(*) AS c FROM users WHERE email = 'direction@schoolnet.academy'");
+    if (!demo || demo.c === 0) return false;
+    const students = get('SELECT COUNT(*) AS c FROM students')?.c ?? 0;
+    const classes = get('SELECT COUNT(*) AS c FROM classes')?.c ?? 0;
+    return students === 0 && classes === 0;
+  } catch {
+    return false;
+  }
+}
+
 export function resetDatabase() {
   const tables = ['attendance', 'loans', 'books', 'schedules', 'course_units', 'programs', 'faculties',
     'grades', 'payments', 'admissions', 'courses', 'announcements', 'students',

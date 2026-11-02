@@ -11,7 +11,7 @@ import { migrate, isEmpty, isDirty, onWrite } from './db.js';
 import { restore, flush, scheduleSync, persistenceStatus, persistenceMode } from './persist.js';
 import { supabaseStatus, syncAuthUser } from './supabase.js';
 import { mailerStatus } from './mailer.js';
-import { seed, resetDatabase } from './seed.js';
+import { seed, resetDatabase, needsRepair } from './seed.js';
 import { requireAuth, verifyPassword, createSession, hashPassword, userFromRequest } from './auth.js';
 import { recentActivity } from './helpers.js';
 import { get as dbGet } from './db.js';
@@ -81,12 +81,16 @@ export const ready = (async () => {
   await step('migrate', () => { migrate(); return 'ok'; });
   onWrite(() => scheduleSync());
 
-  if (isEmpty() || process.env.SEED === 'force') {
+  const forceSeed = process.env.SEED === 'force';
+  const repair = needsRepair();
+  if (forceSeed || repair || isEmpty()) {
     await step('seed', () => {
-      if (process.env.SEED === 'force') resetDatabase();
-      console.log('→ Initialisation des données de démonstration…');
+      if ((forceSeed || repair) && !isEmpty()) resetDatabase();
+      console.log(repair && !forceSeed
+        ? '→ Base de démonstration incomplète détectée : régénération…'
+        : '→ Initialisation des données de démonstration…');
       seed();
-      return 'ok';
+      return repair && !forceSeed ? 'réparée' : 'ok';
     });
   }
   await step('platformSeed', () => { ensurePlatformSeed(); return 'ok'; });
