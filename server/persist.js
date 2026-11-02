@@ -44,28 +44,24 @@ async function remoteVersion(timeout) {
 export async function restore() {
   if (!supabaseConfigured) return { restored: false, mode: 'local' };
   try {
-    // Le premier appel réseau d'une instance à froid est parfois très lent :
-    // une requête minuscule « réchauffe » la connexion, puis l'instantané est
-    // téléchargé avec un délai généreux. Budget total 25 s, sous la limite
-    // d'exécution de la fonction serverless (60 s).
+    // Le tout premier appel réseau d'une instance à froid peut rester bloqué
+    // plusieurs secondes (résolution DNS, réveil de la fonction). On lance donc
+    // deux téléchargements en parallèle : le premier règle la connexion, le
+    // second aboutit (`Promise.any` ignore l'appel qui expire).
     const deadline = Date.now() + 25_000;
     const attempts = [];
-    try {
-      const started = Date.now();
-      await remoteVersion(Math.min(6_000, Math.max(3_000, deadline - Date.now())));
-      attempts.push(`réchauffement : ${Date.now() - started} ms`);
-    } catch (error) {
-      attempts.push(`réchauffement : ${error.message}`);
-    }
+    void remoteVersion(6_000).catch(() => null);
+    const budget = () => Math.min(15_000, Math.max(5_000, deadline - Date.now()));
     let state = null;
-    for (let attempt = 1; attempt <= 2 && !state && Date.now() < deadline; attempt += 1) {
-      const started = Date.now();
-      try {
-        state = await fetchState(Math.min(15_000, Math.max(5_000, deadline - Date.now())));
-        if (!state?.payload) attempts.push(`essai ${attempt} : instantané absent (${Date.now() - started} ms)`);
-      } catch (error) {
-        attempts.push(`essai ${attempt} : ${error.message} (${Date.now() - started} ms)`);
-      }
+    const started = Date.now();
+    try {
+      state = await Promise.any([
+        fetchState(budget()),
+        new Promise((resolve) => setTimeout(() => resolve(null), 400)).then(() => fetchState(budget())),
+      ]);
+      if (!state?.payload) attempts.push(`instantané absent (${Date.now() - started} ms)`);
+    } catch (error) {
+      attempts.push(`${error?.errors?.map((e) => e?.message).join(' | ') || error.message} (${Date.now() - started} ms)`);
     }
     if (!state?.payload) {
       lastError = attempts.join(' · ') || 'instantané distant introuvable';
