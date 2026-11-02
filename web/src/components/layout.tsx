@@ -1,0 +1,281 @@
+import { useEffect, useRef, useState } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import {
+  LayoutDashboard, Users, GraduationCap, School, ClipboardList, Wallet, BookOpen,
+  Megaphone, Award, Settings, Menu, X, LogOut, ChevronDown, LifeBuoy, UserRound,
+  Building2, Layers, CalendarDays, Library, UserCheck, CreditCard, BadgeDollarSign,
+  ShieldCheck, Sparkles,
+} from 'lucide-react';
+import { clsx } from 'clsx';
+import { useAuth } from '../lib/auth';
+import { ROLE_LABEL } from '../lib/labels';
+import { Avatar, IconButton } from './ui';
+import { Logo } from './logo';
+import { NotificationsBell } from './notifications-bell';
+import { AiChat } from './ai-chat';
+
+export interface NavItem {
+  to: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  roles: string[];
+}
+
+const SECTIONS: { title: string; items: NavItem[] }[] = [
+  {
+    title: 'Pilotage',
+    items: [
+      { to: '/app', label: 'Tableau de bord', icon: LayoutDashboard, roles: ['admin', 'teacher', 'parent'] },
+    ],
+  },
+  {
+    title: 'Scolarité',
+    items: [
+      { to: '/app/eleves', label: 'Élèves', icon: Users, roles: ['admin', 'teacher'] },
+      { to: '/app/mes-enfants', label: 'Mes enfants', icon: Users, roles: ['parent'] },
+      { to: '/app/classes', label: 'Classes', icon: School, roles: ['admin', 'teacher'] },
+      { to: '/app/enseignants', label: 'Enseignants', icon: GraduationCap, roles: ['admin'] },
+      { to: '/app/presences', label: 'Présences', icon: UserCheck, roles: ['admin', 'teacher'] },
+      { to: '/app/cartes', label: 'Cartes scolaires', icon: CreditCard, roles: ['admin', 'teacher'] },
+    ],
+  },
+  {
+    title: 'Université',
+    items: [
+      { to: '/app/facultes', label: 'Facultés', icon: Building2, roles: ['admin', 'teacher'] },
+      { to: '/app/filieres', label: 'Filières', icon: Layers, roles: ['admin', 'teacher'] },
+      { to: '/app/unites', label: "Unités d'enseignement", icon: BookOpen, roles: ['admin', 'teacher'] },
+      { to: '/app/emploi-du-temps', label: 'Emploi du temps', icon: CalendarDays, roles: ['admin', 'teacher'] },
+      { to: '/app/bibliotheque', label: 'Bibliothèque', icon: Library, roles: ['admin'] },
+    ],
+  },
+  {
+    title: 'Administration',
+    items: [
+      { to: '/app/inscriptions', label: 'Inscriptions', icon: ClipboardList, roles: ['admin'] },
+      { to: '/app/paiements', label: 'Paiements', icon: Wallet, roles: ['admin', 'parent'] },
+      { to: '/app/resultats', label: 'Résultats', icon: Award, roles: ['admin', 'teacher', 'parent'] },
+      { to: '/app/abonnement', label: 'Abonnement', icon: BadgeDollarSign, roles: ['admin'] },
+    ],
+  },
+  {
+    title: 'Pédagogie',
+    items: [
+      { to: '/app/cours', label: 'Cours en ligne', icon: BookOpen, roles: ['admin', 'teacher'] },
+      { to: '/app/annonces', label: 'Annonces', icon: Megaphone, roles: ['admin', 'teacher', 'parent'] },
+    ],
+  },
+];
+
+const PLATFORM_SECTION = {
+  title: 'Plateforme',
+  items: [
+    { to: '/plateforme', label: 'Super administration', icon: ShieldCheck, roles: ['admin', 'teacher', 'parent'] },
+  ] as NavItem[],
+};
+
+const ALL_ITEMS = SECTIONS.flatMap((section) => section.items);
+
+export function AppShell() {
+  const { user, logout } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => setSidebarOpen(false), [location.pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onClick = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [menuOpen]);
+
+  if (!user) return null;
+
+  const role = user.role;
+  // Un agent de la plateforme n'est rattaché à aucun établissement : son espace
+  // se limite à la super administration et à ses paramètres.
+  const isPlatformOnly = Boolean(user.platformRole && !user.tenantId);
+  const sections = isPlatformOnly
+    ? [{ title: 'Plateforme', items: [PLATFORM_SECTION.items[0]] }]
+    : user.platformRole
+      ? [...SECTIONS, PLATFORM_SECTION]
+      : SECTIONS;
+  const navItems = [...ALL_ITEMS, ...PLATFORM_SECTION.items];
+  const current = navItems
+    .filter((item) => item.roles.includes(role))
+    .sort((a, b) => b.to.length - a.to.length)
+    .find((item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`));
+
+  const access = user.access;
+  const trialLabel = access?.status === 'essai'
+    ? `Essai · ${access.daysLeft ?? 0} j`
+    : access?.blocked
+      ? 'Abonnement requis'
+      : access?.status === 'actif'
+        ? 'Abonnement actif'
+        : null;
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/connexion', { replace: true });
+  };
+
+  return (
+    <div className="shell">
+      {sidebarOpen && <div className="sidebar-scrim" onClick={() => setSidebarOpen(false)} />}
+
+      <aside className={clsx('sidebar', sidebarOpen && 'open')}>
+        <div className="sidebar-brand">
+          <Logo />
+          <button className="icon-btn mobile-toggle" style={{ marginLeft: 'auto', color: '#a9cbc4' }} onClick={() => setSidebarOpen(false)} aria-label="Fermer le menu">
+            <X size={18} />
+          </button>
+        </div>
+
+        <nav className="sidebar-nav">
+          {sections.map((section) => {
+            const items = section.items.filter((item) => item.roles.includes(role));
+            if (!items.length) return null;
+            return (
+              <div key={section.title}>
+                <div className="sidebar-section">{section.title}</div>
+                {items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.to === '/app'}
+                    className={({ isActive }) => clsx('sidebar-link', isActive && 'active')}
+                  >
+                    <item.icon size={17} />
+                    <span>{item.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            );
+          })}
+          <div className="sidebar-section">Compte</div>
+          <NavLink
+            to={isPlatformOnly ? '/plateforme/parametres' : '/app/parametres'}
+            className={({ isActive }) => clsx('sidebar-link', isActive && 'active')}
+          >
+            <Settings size={17} />
+            <span>Paramètres</span>
+          </NavLink>
+          {trialLabel && (
+            <NavLink to="/app/abonnement" className={clsx('sidebar-plan', access?.blocked && 'danger')}>
+              <Sparkles size={14} />
+              <span className="grow">{trialLabel}</span>
+              <span className="tiny">Gérer</span>
+            </NavLink>
+          )}
+        </nav>
+
+        <div className="sidebar-foot">
+          <div className="sidebar-help">
+            <div className="row gap-8">
+              <LifeBuoy size={14} style={{ color: '#5eead4' }} />
+              <strong>Besoin d'aide ?</strong>
+            </div>
+            <p>Le secrétariat répond du lundi au vendredi, de 7h30 à 16h00.</p>
+          </div>
+          <div className="sidebar-user">
+            <Avatar name={user.name} color={user.avatarColor} size="sm" />
+            <div className="grow" style={{ minWidth: 0 }}>
+              <div className="name truncate">{user.name}</div>
+              <div className="role">{ROLE_LABEL[user.role] ?? user.role}</div>
+            </div>
+            <button
+              className="icon-btn"
+              style={{ color: '#7fada4', width: 30, height: 30 }}
+              onClick={handleLogout}
+              aria-label="Se déconnecter"
+              title="Se déconnecter"
+            >
+              <LogOut size={15} />
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <div className="main">
+        {import.meta.env.VITE_DEMO === '1' && (
+          <div className="demo-strip">
+            <span className="demo-dot" />
+            <span className="demo-strip-text">
+              <strong>Démo statique</strong> · données de démonstration, écritures simulées dans le navigateur
+              (réinitialisées au rechargement).
+            </span>
+            <button type="button" className="demo-strip-btn" onClick={handleLogout}>
+              Changer de profil
+            </button>
+          </div>
+        )}
+        <header className="topbar">
+          <button className="icon-btn mobile-toggle" onClick={() => setSidebarOpen(true)} aria-label="Ouvrir le menu">
+            <Menu size={19} />
+          </button>
+          <div className="page-crumb">
+            <span className="hide-sm">School Net Academy</span>
+            <span className="hide-sm">/</span>
+            <strong>{current?.label ?? 'Espace'}</strong>
+          </div>
+          <div className="topbar-actions">
+            {trialLabel && (
+              <NavLink
+                to="/app/abonnement"
+                className={clsx('topbar-plan', access?.blocked && 'danger')}
+                title="Abonnement et facturation"
+              >
+                <BadgeDollarSign size={14} />
+                <span className="hide-sm">{trialLabel}</span>
+              </NavLink>
+            )}
+            <NotificationsBell />
+            <div style={{ position: 'relative' }} ref={menuRef}>
+              <button className="topbar-user" onClick={() => setMenuOpen((open) => !open)} aria-expanded={menuOpen}>
+                <Avatar name={user.name} color={user.avatarColor} size="sm" />
+                <span className="meta">
+                  <strong>{user.name.split(' ')[0]}</strong>
+                  <span>{ROLE_LABEL[user.role] ?? user.role}</span>
+                </span>
+                <ChevronDown size={14} style={{ color: 'var(--ink-400)', marginRight: 4 }} />
+              </button>
+              {menuOpen && (
+                <div className="user-menu">
+                  <div style={{ padding: '8px 10px 10px' }}>
+                    <div className="strong truncate">{user.name}</div>
+                    <div className="tiny muted truncate">{user.email}</div>
+                  </div>
+                  <div className="sep" />
+                  <button className="item" onClick={() => { setMenuOpen(false); navigate(isPlatformOnly ? '/plateforme/parametres' : '/app/parametres'); }}>
+                    <UserRound size={15} /> Mon profil
+                  </button>
+                  <button className="item" onClick={() => { setMenuOpen(false); navigate(isPlatformOnly ? '/plateforme/parametres' : '/app/parametres'); }}>
+                    <Settings size={15} /> Paramètres
+                  </button>
+                  <div className="sep" />
+                  <button className="item danger" onClick={handleLogout}>
+                    <LogOut size={15} /> Se déconnecter
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
+
+        <main className="page">
+          <Outlet />
+        </main>
+        <AiChat />
+      </div>
+    </div>
+  );
+}
+
+export { IconButton };

@@ -1,0 +1,27 @@
+# Déploiement Render (https://render.com) — « Blueprint » en un clic depuis le dépôt GitHub.
+# L'application est un serveur Node (Express + SQLite) : elle sert l'API et l'interface compilée.
+services:
+  - type: web
+    name: school-net-academy
+    runtime: node
+    plan: free
+    region: frankfurt
+    autoDeploy: true
+    buildCommand: npm ci --no-audit --no-fund && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.22.3
+      - key: NODE_ENV
+        value: production
+      # Base SQLite : elle est créée et remplie automatiquement au premier démarrage.
+      # Sur le plan gratuit le disque est éphémère : les données sont réinitialisées à chaque
+      # redéploiement/redémarrage. Pour conserver les données, passez sur un plan payant et
+      # décommentez le bloc « disk » ci-dessous.
+      - key: DB_FILE
+        value: data/school-net.db
+    # disk:
+    #   name: school-net-data
+    #   mountPath: /opt/render/project/src/data   # = chemin de DB_FILE
+    #   sizeGB: 1

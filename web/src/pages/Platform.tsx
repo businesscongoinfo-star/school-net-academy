@@ -1,0 +1,1498 @@
+import { useMemo, useState } from 'react';
+import {
+  Building2, CalendarClock, CreditCard, Crown, DollarSign, Headphones, Mail, Megaphone,
+  MessageSquare, Pencil, Plus, RefreshCw, Send, ShieldCheck, Target, Trash2, TrendingUp,
+  UserPlus, Users, Wallet, Wifi, XCircle, Copy, Check, MailCheck, AlertTriangle, LogIn,
+  Sparkles, KeyRound, Save,
+} from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../lib/auth';
+import { ApiError, del, get, patch, post, put, qs } from '../lib/api';
+import {
+  Badge, Button, Card, EmptyState, Field, IconButton, Input, PageHeader, Select, StatCard,
+  TableSkeleton, Textarea,
+} from '../components/ui';
+import { Modal } from '../components/overlays';
+import { useToast } from '../components/toast';
+import { COUNTRIES, formatCurrency } from '../lib/countries';
+import { formatDate, formatDateTime, formatNumber, relativeTime } from '../lib/format';
+import type {
+  NewsletterCampaign, NewsletterSubscriber, PlatformOverview, PlatformStaff, PlatformTenant,
+  PlatformRole, SmsMessage, SubscriptionInvoice, TenantSummary,
+} from '../lib/types';
+
+type TabId = 'overview' | 'tenants' | 'staff' | 'subscriptions' | 'newsletter' | 'sms' | 'integrations';
+
+const TABS: { id: TabId; label: string; icon: typeof Building2 }[] = [
+  { id: 'overview', label: "Vue d'ensemble", icon: TrendingUp },
+  { id: 'tenants', label: 'Établissements', icon: Building2 },
+  { id: 'staff', label: 'Équipe plateforme', icon: Users },
+  { id: 'subscriptions', label: 'Abonnements', icon: Wallet },
+  { id: 'newsletter', label: 'Newsletter', icon: Megaphone },
+  { id: 'sms', label: 'Journal SMS', icon: MessageSquare },
+  { id: 'integrations', label: 'Intégrations', icon: Wifi },
+];
+
+const ROLE_CAPS: Record<PlatformRole, TabId[]> = {
+  owner: ['overview', 'tenants', 'staff', 'subscriptions', 'newsletter', 'sms', 'integrations'],
+  manager: ['overview', 'tenants', 'staff', 'subscriptions', 'newsletter', 'sms', 'integrations'],
+  support: ['overview', 'tenants', 'staff', 'sms'],
+  finance: ['overview', 'tenants', 'subscriptions', 'sms'],
+  marketing: ['overview', 'newsletter'],
+  closer: ['overview', 'tenants'],
+};
+
+export const PLATFORM_ROLE_LABEL: Record<PlatformRole, string> = {
+  owner: 'Propriétaire',
+  manager: 'Gestionnaire',
+  support: 'Support',
+  finance: 'Financier',
+  marketing: 'Marketeur',
+  closer: 'Closer',
+};
+
+const ROLE_MISSION: Record<PlatformRole, string> = {
+  owner: "Accès total : établissements, équipe, finances, campagnes et journal SMS.",
+  manager: "Pilote l'ensemble de la plateforme, gère l'équipe et les abonnements.",
+  support: "Accompagne les établissements, prolonge les essais, suit les SMS envoyés.",
+  finance: "Suit la facturation, encaisse les abonnements, analyse les revenus.",
+  marketing: "Conçoit et envoie les campagnes newsletter, anime la base d'abonnés.",
+  closer: "Convertit les essais en abonnements payants et relance les comptes bloqués.",
+};
+
+const ROLE_ICON: Record<PlatformRole, typeof Crown> = {
+  owner: Crown, manager: ShieldCheck, support: Headphones, finance: DollarSign,
+  marketing: Megaphone, closer: Target,
+};
+
+const TENANT_STATUS: Record<string, { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }> = {
+  essai: { label: 'Essai', tone: 'warning' },
+  actif: { label: 'Actif', tone: 'success' },
+  expire: { label: 'Expiré', tone: 'danger' },
+  suspendu: { label: 'Suspendu', tone: 'danger' },
+};
+
+const METHODS = [
+  { id: 'mobile_money', label: 'Mobile Money' },
+  { id: 'carte', label: 'Carte bancaire' },
+  { id: 'virement', label: 'Virement' },
+  { id: 'especes', label: 'Espèces' },
+];
+
+const AUDIENCES = [
+  { id: 'abonnes', label: 'Tous les abonnés actifs' },
+  { id: 'essais', label: 'Établissements en essai' },
+  { id: 'clients', label: 'Établissements payants' },
+];
+
+export function Platform() {
+  const { user } = useAuth();
+  const { success, error: toastError } = useToast();
+  const queryClient = useQueryClient();
+  const role = (user?.platformRole ?? 'support') as PlatformRole;
+  const allowed = ROLE_CAPS[role] ?? ['overview'];
+  const [tab, setTab] = useState<TabId>(allowed[0] ?? 'overview');
+
+  const activeTab = allowed.includes(tab) ? tab : allowed[0];
+
+  const overview = useQuery({
+    queryKey: ['platform', 'overview'],
+    queryFn: () => get<PlatformOverview>('/platform/overview'),
+    enabled: allowed.includes('overview'),
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['platform'] });
+    queryClient.invalidateQueries({ queryKey: ['notifications'] });
+  };
+
+  return (
+    <div className="stack gap-20">
+      <PageHeader
+        title="Super administration"
+        subtitle={`Espace de l'équipe School Net Academy — vous êtes connecté en tant que ${PLATFORM_ROLE_LABEL[role]}.`}
+        actions={
+          <Button variant="secondary" icon={RefreshCw} onClick={() => invalidate()} loading={overview.isFetching}>
+            Actualiser
+          </Button>
+        }
+      />
+
+      <div className="role-banner">
+        {(() => { const Icon = ROLE_ICON[role]; return <span className="role-banner-icon"><Icon size={18} /></span>; })()}
+        <div className="grow">
+          <strong>{PLATFORM_ROLE_LABEL[role]} · vos accès</strong>
+          <p className="small">{ROLE_MISSION[role]}</p>
+        </div>
+        <div className="row gap-6 wrap">
+          {allowed.map((id) => (
+            <span key={id} className="pill-soft">{TABS.find((entry) => entry.id === id)?.label}</span>
+          ))}
+        </div>
+      </div>
+
+      <div className="tabs-row">
+        {TABS.filter((entry) => allowed.includes(entry.id)).map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            className={`tab-btn${activeTab === entry.id ? ' active' : ''}`}
+            onClick={() => setTab(entry.id)}
+          >
+            <entry.icon size={15} /> {entry.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'overview' && (
+        <OverviewTab
+          data={overview.data}
+          loading={overview.isLoading}
+          canConvert={allowed.includes('subscriptions')}
+          onChanged={invalidate}
+        />
+      )}
+      {activeTab === 'tenants' && <TenantsTab canManage={['manager', 'finance', 'owner'].includes(role)} onChanged={invalidate} />}
+      {activeTab === 'staff' && <StaffTab canWrite={['manager', 'owner'].includes(role)} onChanged={invalidate} />}
+      {activeTab === 'subscriptions' && <SubscriptionsTab onChanged={invalidate} />}
+      {activeTab === 'newsletter' && (
+        <NewsletterTab
+          notify={(message, kind) => (kind === 'error' ? toastError(message) : success(message))}
+        />
+      )}
+      {activeTab === 'sms' && <SmsTab />}
+      {activeTab === 'integrations' && <IntegrationsTab />}
+    </div>
+  );
+}
+
+/* ------------------------------ Vue d'ensemble ---------------------------- */
+
+function OverviewTab({
+  data, loading, canConvert, onChanged,
+}: {
+  data?: PlatformOverview;
+  loading: boolean;
+  canConvert: boolean;
+  onChanged: () => void;
+}) {
+  const { success, error: toastError } = useToast();
+  const [target, setTarget] = useState<TenantSummary | null>(null);
+
+  const extend = useMutation({
+    mutationFn: (tenant: TenantSummary) => patch(`/platform/tenants/${tenant.id}`, { trialDays: 7, status: 'essai' }),
+    onSuccess: () => { success('Essai prolongé de 7 jours.'); onChanged(); },
+    onError: (err) => toastError(err instanceof ApiError ? err.message : 'Action impossible.'),
+  });
+
+  if (loading || !data) {
+    return <div className="grid grid-4">{[0, 1, 2, 3].map((key) => <Card key={key} className="card-pad"><TableSkeleton rows={2} cols={2} /></Card>)}</div>;
+  }
+
+  const kpis = data.kpis;
+
+  return (
+    <div className="stack gap-20">
+      <div className="grid grid-4">
+        <StatCard label="Établissements" value={formatNumber(kpis.tenants)} icon={Building2} foot={`${kpis.actifs} actifs · ${kpis.essais} en essai`} />
+        <StatCard label="Revenu mensuel (MRR)" value={formatCurrency(kpis.mrr, 'XAF')} icon={TrendingUp} tone="primary" foot="Abonnements actifs" />
+        <StatCard label="Encaissé (30 j)" value={formatCurrency(kpis.revenue30d, 'XAF')} icon={Wallet} foot={`${formatCurrency(kpis.revenue, 'XAF')} au total`} />
+        <StatCard label="Abonnés newsletter" value={formatNumber(kpis.subscribers)} icon={Mail} foot={`${kpis.staff} agents plateforme`} />
+      </div>
+
+      <div className="grid grid-2" style={{ alignItems: 'start' }}>
+        <Card>
+          <div className="card-head">
+            <h3>Essais en cours</h3>
+            <Badge tone="warning">{data.trials.length}</Badge>
+          </div>
+          <div className="card-body stack gap-10">
+            {!data.trials.length && <EmptyState title="Aucun essai en cours" description="Tous les établissements ont une offre active." icon={CalendarClock} />}
+            {data.trials.map((tenant) => {
+              const days = tenant.access?.daysLeft ?? 0;
+              return (
+                <div key={tenant.id} className="trial-row">
+                  <div className="grow">
+                    <strong>{tenant.name}</strong>
+                    <div className="tiny muted">{tenant.country} · {tenant.kind} · {tenant.currency}</div>
+                  </div>
+                  <Badge tone={days <= 2 ? 'danger' : 'warning'}>{days} j restants</Badge>
+                  <div className="row gap-6">
+                    {canConvert && (
+                      <Button size="sm" variant="soft" icon={CreditCard} onClick={() => setTarget(tenant)}>Convertir</Button>
+                    )}
+                    <Button size="sm" variant="secondary" icon={CalendarClock} loading={extend.isPending} onClick={() => extend.mutate(tenant)}>
+                      +7 j
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
+        <Card>
+          <div className="card-head">
+            <h3>Derniers encaissements</h3>
+            <Badge tone="neutral">{data.invoices.length}</Badge>
+          </div>
+          <div className="card-body stack gap-10">
+            {!data.invoices.length && <EmptyState title="Pas encore d'encaissement" description="Les paiements d'abonnement apparaîtront ici." icon={CreditCard} />}
+            {data.invoices.map((invoice) => (
+              <div key={invoice.id} className="trial-row">
+                <div className="grow">
+                  <strong>{invoice.tenantName}</strong>
+                  <div className="tiny muted">{invoice.reference} · {invoice.plan} · {relativeTime(invoice.createdAt)}</div>
+                </div>
+                <div className="right">
+                  <strong>{formatCurrency(invoice.amount, invoice.currency)}</strong>
+                  <div className="tiny muted">{METHODS.find((m) => m.id === invoice.method)?.label ?? invoice.method}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      <Card>
+        <div className="card-head">
+          <h3>Équipe plateforme</h3>
+          <Badge tone="neutral">{data.staff.length} agents</Badge>
+        </div>
+        <div className="card-body staff-chips">
+          {data.staff.map((member) => {
+            const memberRole = member.platformRole;
+            const Icon = ROLE_ICON[memberRole] ?? Users;
+            return (
+              <div key={member.id} className="staff-chip">
+                <span className="staff-chip-icon"><Icon size={14} /></span>
+                <div>
+                  <strong>{member.name}</strong>
+                  <div className="tiny muted">{PLATFORM_ROLE_LABEL[memberRole] ?? memberRole}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      <ConvertModal tenant={target} onClose={() => setTarget(null)} onDone={() => { onChanged(); setTarget(null); }} />
+    </div>
+  );
+}
+
+/* ------------------------------ Établissements ---------------------------- */
+
+function TenantsTab({ canManage, onChanged }: { canManage: boolean; onChanged: () => void }) {
+  const { success, error: toastError } = useToast();
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('');
+  const [target, setTarget] = useState<TenantSummary | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform', 'tenants', search, status],
+    queryFn: () => get<{ items: PlatformTenant[] }>(`/platform/tenants${qs({ search, status })}`),
+  });
+
+  const update = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) => patch(`/platform/tenants/${id}`, body),
+    onSuccess: (_result, variables) => {
+      success(variables.body.status === 'suspendu' ? 'Établissement suspendu.' : 'Établissement mis à jour.');
+      onChanged();
+    },
+    onError: (err) => toastError(err instanceof ApiError ? err.message : 'Modification impossible.'),
+  });
+
+  const items = data?.items ?? [];
+
+  return (
+    <div className="stack gap-16">
+      <Card className="card-pad">
+        <div className="row gap-10 wrap">
+          <Input
+            placeholder="Rechercher un établissement, un pays, un e-mail…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            style={{ maxWidth: 340 }}
+          />
+          <Select value={status} onChange={(event) => setStatus(event.target.value)} style={{ maxWidth: 190 }}>
+            <option value="">Tous les statuts</option>
+            <option value="essai">Essai</option>
+            <option value="actif">Actif</option>
+            <option value="expire">Expiré</option>
+            <option value="suspendu">Suspendu</option>
+          </Select>
+          <div className="grow" />
+          <Badge tone="neutral">{items.length} établissement{items.length > 1 ? 's' : ''}</Badge>
+          <Button variant="primary" icon={Plus} disabled={!canManage} onClick={() => setCreating(true)}>
+            Nouvel établissement
+          </Button>
+        </div>
+      </Card>
+
+      <Card>
+        {isLoading ? (
+          <div className="card-body"><TableSkeleton rows={5} cols={5} /></div>
+        ) : !items.length ? (
+          <div className="card-body"><EmptyState title="Aucun établissement" description="Ajustez la recherche ou invitez un nouvel établissement à s'inscrire." icon={Building2} /></div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Établissement</th>
+                  <th>Pays</th>
+                  <th>Statut</th>
+                  <th>Offre</th>
+                  <th>Utilisateurs</th>
+                  <th>Créé le</th>
+                  <th className="right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((tenant) => {
+                  const meta = TENANT_STATUS[tenant.status] ?? { label: tenant.status, tone: 'neutral' as const };
+                  return (
+                    <tr key={tenant.id}>
+                      <td>
+                        <div className="strong">{tenant.name}</div>
+                        <div className="tiny muted">{tenant.owner?.email ?? tenant.email}</div>
+                      </td>
+                      <td>
+                        <div>{tenant.country}</div>
+                        <div className="tiny muted">{tenant.currency}</div>
+                      </td>
+                      <td>
+                        <Badge tone={meta.tone} dot>{meta.label}</Badge>
+                        {tenant.access?.status === 'essai' && (
+                          <div className="tiny muted">{tenant.access.daysLeft} j restants</div>
+                        )}
+                      </td>
+                      <td>{tenant.plan ?? '—'}</td>
+                      <td>{tenant.users ?? 0}</td>
+                      <td>{formatDate(tenant.createdAt)}</td>
+                      <td>
+                        <div className="row gap-6" style={{ justifyContent: 'flex-end' }}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon={LogIn}
+                            onClick={async () => {
+                              try {
+                                const { url } = await post<{ url: string }>(`/platform/tenants/${tenant.id}/impersonate`);
+                                window.location.assign(url);
+                              } catch (err) {
+                                toastError(err instanceof ApiError ? err.message : 'Accès impossible.');
+                              }
+                            }}
+                          >
+                            Ouvrir
+                          </Button>
+                          <Button size="sm" variant="soft" icon={CreditCard} onClick={() => setTarget(tenant)} disabled={!canManage}>
+                            Abonner
+                          </Button>
+                          {tenant.status === 'suspendu' ? (
+                            <Button size="sm" variant="secondary" icon={RefreshCw} disabled={!canManage} onClick={() => update.mutate({ id: tenant.id, body: { status: 'actif' } })}>
+                              Réactiver
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="secondary" icon={XCircle} disabled={!canManage} onClick={() => update.mutate({ id: tenant.id, body: { status: 'suspendu' } })}>
+                              Suspendre
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <ConvertModal tenant={target} onClose={() => setTarget(null)} onDone={() => { onChanged(); setTarget(null); }} />
+      <CreateTenantModal
+        open={creating}
+        onClose={() => setCreating(false)}
+        onDone={() => { onChanged(); }}
+        notify={(message, kind) => (kind === 'error' ? toastError(message) : success(message))}
+      />
+    </div>
+  );
+}
+
+/* --------------------------- Nouvel établissement ------------------------- */
+
+function CreateTenantModal({
+  open, onClose, onDone, notify,
+}: { open: boolean; onClose: () => void; onDone: () => void; notify: (message: string, kind?: 'success' | 'error') => void }) {
+  const [form, setForm] = useState({
+    name: '', kind: 'ecole' as 'ecole' | 'universite' | 'mixte', country: 'Congo-Brazzaville',
+    countryCode: 'CG', currency: 'XAF', ownerName: '', email: '', phone: '', plan: 'pro',
+  });
+  const [result, setResult] = useState<{ temporaryPassword: string; email: string; emailStatus: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const create = useMutation({
+    mutationFn: () => post<{ temporaryPassword: string; owner: { email: string }; emailStatus: string }>('/platform/tenants', {
+      ...form, phone: form.phone || null,
+    }),
+    onSuccess: (data) => {
+      setResult({ temporaryPassword: data.temporaryPassword, email: data.owner.email, emailStatus: data.emailStatus });
+      notify('Établissement créé — communiquez le mot de passe provisoire.');
+      onDone();
+    },
+    onError: (err) => notify(err instanceof ApiError ? err.message : 'Création impossible.', 'error'),
+  });
+
+  const currentCountry = COUNTRIES.find((entry) => entry.code === form.countryCode)
+    ?? COUNTRIES.find((entry) => entry.name === form.country);
+
+  const close = () => {
+    setResult(null);
+    setCopied(false);
+    setForm({ ...form, name: '', ownerName: '', email: '', phone: '' });
+    onClose();
+  };
+
+  return (
+    <Modal open={open} onClose={close} title={result ? 'Espace créé' : 'Créer un établissement'} wide>
+      {result ? (
+        <div className="stack gap-16">
+          <div className="callout success">
+            <Check size={17} />
+            <div>
+              <strong>Le compte est prêt.</strong>
+              <p className="small">
+                {result.emailStatus === 'envoye'
+                  ? `Les identifiants ont été envoyés à ${result.email}.`
+                  : "L'e-mail n'a pas pu partir (aucun fournisseur configuré) : transmettez ces identifiants au responsable."}
+              </p>
+            </div>
+          </div>
+          <Card className="card-pad" style={{ background: 'var(--surface-2)' }}>
+            <div className="stack gap-8">
+              <div className="row gap-8" style={{ justifyContent: 'space-between' }}>
+                <div>
+                  <div className="tiny muted">Identifiant</div>
+                  <div className="strong">{result.email}</div>
+                </div>
+              </div>
+              <div className="row gap-8" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div className="tiny muted">Mot de passe provisoire</div>
+                  <code style={{ fontSize: 16, fontWeight: 700 }}>{result.temporaryPassword}</code>
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={copied ? Check : Copy}
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(`Identifiant : ${result.email}
+Mot de passe : ${result.temporaryPassword}`);
+                      setCopied(true);
+                    } catch { notify('Copie impossible : sélectionnez le texte.', 'error'); }
+                  }}
+                >
+                  {copied ? 'Copié' : 'Copier'}
+                </Button>
+              </div>
+            </div>
+          </Card>
+          <p className="tiny muted">Le responsable peut modifier ce mot de passe dès sa première connexion (Paramètres → Sécurité).</p>
+          <div className="row gap-8" style={{ justifyContent: 'flex-end' }}>
+            <Button variant="secondary" onClick={close}>Fermer</Button>
+          </div>
+        </div>
+      ) : (
+        <form className="stack gap-14" onSubmit={(event) => { event.preventDefault(); create.mutate(); }}>
+          <Field label="Nom de l'établissement">
+            <Input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Complexe scolaire Les Étoiles" />
+          </Field>
+          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <Field label="Type">
+              <Select value={form.kind} onChange={(event) => setForm({ ...form, kind: event.target.value as typeof form.kind })}>
+                <option value="ecole">École</option>
+                <option value="universite">Université</option>
+                <option value="mixte">École + université</option>
+              </Select>
+            </Field>
+            <Field label="Pays">
+              <Select
+                value={form.countryCode}
+                onChange={(event) => {
+                  const country = COUNTRIES.find((entry) => entry.code === event.target.value);
+                  setForm({
+                    ...form,
+                    countryCode: event.target.value,
+                    country: country?.name ?? form.country,
+                    currency: country?.currency ?? form.currency,
+                  });
+                }}
+              >
+                {COUNTRIES.map((country) => (
+                  <option key={country.code} value={country.code}>{country.name} — {country.currency}</option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <Field label="Responsable">
+              <Input required value={form.ownerName} onChange={(event) => setForm({ ...form, ownerName: event.target.value })} placeholder="Nom & prénom" />
+            </Field>
+            <Field label="Adresse e-mail">
+              <Input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="direction@ecole.cg" />
+            </Field>
+          </div>
+          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <Field label="Téléphone" hint="Facultatif">
+              <Input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="+242 06 000 00 00" />
+            </Field>
+            <Field label="Offre" hint={`Devise : ${currentCountry?.currency ?? form.currency}`}>
+              <Select value={form.plan} onChange={(event) => setForm({ ...form, plan: event.target.value })}>
+                <option value="essentiel">Essentiel</option>
+                <option value="pro">Pro</option>
+                <option value="universite">Université</option>
+              </Select>
+            </Field>
+          </div>
+          <p className="tiny muted">Un mot de passe provisoire est généré automatiquement et envoyé au responsable.</p>
+          <div className="row gap-8" style={{ justifyContent: 'flex-end' }}>
+            <Button type="button" variant="secondary" onClick={close}>Annuler</Button>
+            <Button type="submit" variant="primary" icon={Plus} loading={create.isPending}>Créer l'espace</Button>
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
+function ConvertModal({ tenant, onClose, onDone }: { tenant: TenantSummary | null; onClose: () => void; onDone: () => void }) {
+  const { success, error: toastError } = useToast();
+  const [plan, setPlan] = useState('pro');
+  const [method, setMethod] = useState('mobile_money');
+  const [phone, setPhone] = useState('');
+
+  const activate = useMutation({
+    mutationFn: () => post(`/platform/tenants/${tenant?.id}/subscribe`, { plan, method, phone: phone || null }),
+    onSuccess: () => { success(`Abonnement ${plan} activé pour ${tenant?.name}.`); onDone(); },
+    onError: (err) => toastError(err instanceof ApiError ? err.message : 'Activation impossible.'),
+  });
+
+  return (
+    <Modal
+      open={Boolean(tenant)}
+      onClose={onClose}
+      title="Activer un abonnement"
+      description={tenant ? `${tenant.name} · devise ${tenant.currency}` : undefined}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Annuler</Button>
+          <Button variant="primary" icon={ShieldCheck} loading={activate.isPending} onClick={() => activate.mutate()}>
+            Activer l'offre
+          </Button>
+        </>
+      }
+    >
+      <div className="stack gap-14">
+        <Field label="Offre">
+          <Select value={plan} onChange={(event) => setPlan(event.target.value)}>
+            <option value="essentiel">Essentiel — 15 000 FCFA / mois</option>
+            <option value="pro">Pro — 45 000 FCFA / mois</option>
+            <option value="universite">Université — 120 000 FCFA / an</option>
+          </Select>
+        </Field>
+        <Field label="Moyen de paiement">
+          <Select value={method} onChange={(event) => setMethod(event.target.value)}>
+            {METHODS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </Select>
+        </Field>
+        {method === 'mobile_money' && (
+          <Field label="Numéro Mobile Money" hint="Facultatif si le client a déjà communiqué son numéro.">
+            <Input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+242 06 000 00 00" />
+          </Field>
+        )}
+        <p className="tiny muted">
+          Le montant sera enregistré dans la devise de l'établissement (équivalent FCFA conservé pour les statistiques).
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
+/* --------------------------------- Équipe -------------------------------- */
+
+function StaffTab({ canWrite, onChanged }: { canWrite: boolean; onChanged: () => void }) {
+  const { success, error: toastError } = useToast();
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ name: '', email: '', platformRole: 'support' as PlatformRole, phone: '' });
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform', 'staff'],
+    queryFn: () => get<{ items: PlatformStaff[] }>('/platform/staff'),
+  });
+
+  const create = useMutation({
+    mutationFn: () => post<{ member: PlatformStaff; temporaryPassword?: string | null }>('/platform/staff', {
+      name: form.name, email: form.email, platformRole: form.platformRole, phone: form.phone || null,
+    }),
+    onSuccess: (result) => {
+      success(`${result.member.name} a rejoint l'équipe.`);
+      setTempPassword(result.temporaryPassword ?? null);
+      setForm({ name: '', email: '', platformRole: 'support', phone: '' });
+      onChanged();
+    },
+    onError: (err) => toastError(err instanceof ApiError ? err.message : 'Création impossible.'),
+  });
+
+  const updateRole = useMutation({
+    mutationFn: ({ id, platformRole }: { id: string; platformRole: PlatformRole }) => patch(`/platform/staff/${id}`, { platformRole }),
+    onSuccess: () => { success('Rôle mis à jour.'); onChanged(); },
+    onError: (err) => toastError(err instanceof ApiError ? err.message : 'Modification impossible.'),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => del(`/platform/staff/${id}`),
+    onSuccess: () => { success('Agent retiré de la plateforme.'); onChanged(); },
+    onError: (err) => toastError(err instanceof ApiError ? err.message : 'Suppression impossible.'),
+  });
+
+  const items = data?.items ?? [];
+
+  return (
+    <div className="stack gap-16">
+      <div className="grid grid-4">
+        {(Object.keys(PLATFORM_ROLE_LABEL) as PlatformRole[]).filter((role) => role !== 'owner').map((role) => {
+          const Icon = ROLE_ICON[role];
+          const count = items.filter((member) => member.platformRole === role).length;
+          return (
+            <Card key={role} className="card-pad role-card">
+              <div className="row gap-8">
+                <span className="role-banner-icon"><Icon size={15} /></span>
+                <strong className="grow">{PLATFORM_ROLE_LABEL[role]}</strong>
+                <Badge tone="neutral">{count}</Badge>
+              </div>
+              <p className="small muted" style={{ marginTop: 8 }}>{ROLE_MISSION[role]}</p>
+              <div className="row gap-6 wrap" style={{ marginTop: 10 }}>
+                {ROLE_CAPS[role].map((id) => <span key={id} className="pill-soft">{TABS.find((t) => t.id === id)?.label}</span>)}
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      <Card>
+        <div className="card-head">
+          <h3>Agents de la plateforme</h3>
+          <div className="row gap-8">
+            <Badge tone="neutral">{items.length}</Badge>
+            <Button size="sm" variant="primary" icon={UserPlus} onClick={() => { setTempPassword(null); setOpen(true); }} disabled={!canWrite}>
+              Ajouter un agent
+            </Button>
+          </div>
+        </div>
+        {isLoading ? (
+          <div className="card-body"><TableSkeleton rows={4} cols={4} /></div>
+        ) : !items.length ? (
+          <div className="card-body"><EmptyState title="Aucun agent" description="Ajoutez les personnes qui accompagnent les établissements." icon={Users} /></div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Agent</th>
+                  <th>Rôle</th>
+                  <th>Dernière connexion</th>
+                  <th>Créé le</th>
+                  <th className="right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((member) => (
+                  <tr key={member.id}>
+                    <td>
+                      <div className="strong">{member.name}</div>
+                      <div className="tiny muted">{member.email}</div>
+                    </td>
+                    <td>
+                      <Select
+                        value={member.platformRole}
+                        disabled={!canWrite || member.platformRole === 'owner'}
+                        onChange={(event) => updateRole.mutate({ id: member.id, platformRole: event.target.value as PlatformRole })}
+                        style={{ maxWidth: 170 }}
+                      >
+                        {(Object.keys(PLATFORM_ROLE_LABEL) as PlatformRole[]).map((role) => (
+                          <option key={role} value={role}>{PLATFORM_ROLE_LABEL[role]}</option>
+                        ))}
+                      </Select>
+                    </td>
+                    <td>{member.lastLoginAt ? formatDateTime(member.lastLoginAt) : 'Jamais'}</td>
+                    <td>{formatDate(member.createdAt)}</td>
+                    <td>
+                      <div className="row gap-6" style={{ justifyContent: 'flex-end' }}>
+                        <IconButton
+                          icon={Trash2}
+                          label="Retirer cet agent"
+                          tone="danger"
+                          disabled={!canWrite || member.platformRole === 'owner'}
+                          onClick={() => { if (window.confirm(`Retirer ${member.name} de l'équipe ?`)) remove.mutate(member.id); }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Ajouter un agent"
+        description="Chaque agent dispose de son propre espace et de ses accès selon son rôle."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setOpen(false)}>Fermer</Button>
+            <Button variant="primary" icon={Plus} loading={create.isPending} onClick={() => create.mutate()} disabled={!form.name || !form.email}>
+              Créer le compte
+            </Button>
+          </>
+        }
+      >
+        <div className="stack gap-14">
+          <div className="form-grid">
+            <Field label="Nom complet">
+              <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ex. Léa Mouyabi" />
+            </Field>
+            <Field label="Adresse e-mail">
+              <Input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="prenom.nom@schoolnet.academy" />
+            </Field>
+            <Field label="Rôle">
+              <Select value={form.platformRole} onChange={(event) => setForm({ ...form, platformRole: event.target.value as PlatformRole })}>
+                {(Object.keys(PLATFORM_ROLE_LABEL) as PlatformRole[]).filter((role) => role !== 'owner').map((role) => (
+                  <option key={role} value={role}>{PLATFORM_ROLE_LABEL[role]}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Téléphone">
+              <Input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="+242 06 000 00 00" />
+            </Field>
+          </div>
+          <p className="tiny muted">{ROLE_MISSION[form.platformRole]}</p>
+          {tempPassword && (
+            <div className="callout success">
+              <ShieldCheck size={16} />
+              <div>
+                <strong>Mot de passe temporaire : {tempPassword}</strong>
+                <p className="small">Communiquez-le à l'agent ; il pourra le changer depuis ses paramètres.</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+/* ------------------------------- Abonnements ------------------------------ */
+
+function SubscriptionsTab({ onChanged }: { onChanged: () => void }) {
+  const { success, error: toastError } = useToast();
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform', 'subscriptions'],
+    queryFn: () => get<{ items: SubscriptionInvoice[]; stats: { count: number; total: number } }>('/platform/subscriptions'),
+  });
+
+  const [invoice, setInvoice] = useState<SubscriptionInvoice | null>(null);
+  const items = data?.items ?? [];
+
+  return (
+    <div className="stack gap-16">
+      <div className="grid grid-4">
+        <StatCard label="Paiements enregistrés" value={formatNumber(data?.stats.count ?? 0)} icon={CreditCard} />
+        <StatCard label="Encaissé (équivalent FCFA)" value={formatCurrency(data?.stats.total ?? 0, 'XAF')} icon={Wallet} tone="primary" />
+        <StatCard label="Panier moyen" value={formatCurrency(data?.stats.count ? Math.round((data.stats.total ?? 0) / data.stats.count) : 0, 'XAF')} icon={TrendingUp} />
+      </div>
+
+      <Card>
+        <div className="card-head">
+          <h3>Historique des abonnements</h3>
+          <Badge tone="neutral">{items.length}</Badge>
+        </div>
+        {isLoading ? (
+          <div className="card-body"><TableSkeleton rows={5} cols={5} /></div>
+        ) : !items.length ? (
+          <div className="card-body"><EmptyState title="Aucun abonnement payé" description="Les conversions d'essais apparaîtront ici." icon={CreditCard} /></div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Référence</th>
+                  <th>Établissement</th>
+                  <th>Offre</th>
+                  <th>Montant</th>
+                  <th>Période</th>
+                  <th className="right">Détail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((row) => (
+                  <tr key={row.id}>
+                    <td className="strong">{row.reference}</td>
+                    <td>
+                      <div>{row.tenantName}</div>
+                      <div className="tiny muted">{row.tenantCountry}</div>
+                    </td>
+                    <td>{row.plan}</td>
+                    <td>
+                      <div className="strong">{formatCurrency(row.amount, row.currency)}</div>
+                      {row.amountFcfa ? <div className="tiny muted">{formatCurrency(row.amountFcfa, 'XAF')}</div> : null}
+                    </td>
+                    <td className="small">{formatDate(row.periodStart)} → {formatDate(row.periodEnd)}</td>
+                    <td className="right">
+                      <Button size="sm" variant="ghost" icon={Mail} onClick={() => setInvoice(row)}>Reçu</Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Modal
+        open={Boolean(invoice)}
+        onClose={() => setInvoice(null)}
+        title={`Reçu ${invoice?.reference ?? ''}`}
+        footer={<Button variant="primary" onClick={() => { success('Reçu envoyé par e-mail au client.'); setInvoice(null); onChanged(); }}>Envoyer au client</Button>}
+      >
+        {invoice && (
+          <div className="receipt">
+            <div className="row gap-8"><ShieldCheck size={16} /> <strong>School Net Academy</strong></div>
+            <p className="small muted">Brazzaville, République du Congo · service@schoolnet.academy</p>
+            <div className="sep" />
+            <div className="receipt-line"><span>Client</span><strong>{invoice.tenantName}</strong></div>
+            <div className="receipt-line"><span>Offre</span><strong>{invoice.plan}</strong></div>
+            <div className="receipt-line"><span>Moyen</span><strong>{METHODS.find((m) => m.id === invoice.method)?.label ?? invoice.method}</strong></div>
+            <div className="receipt-line"><span>Période</span><strong>{formatDate(invoice.periodStart)} → {formatDate(invoice.periodEnd)}</strong></div>
+            <div className="receipt-line"><span>Statut</span><Badge tone="success">{invoice.status}</Badge></div>
+            <div className="sep" />
+            <div className="receipt-line total"><span>Total</span><strong>{formatCurrency(invoice.amount, invoice.currency)}</strong></div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+/* ------------------------------- Newsletter ------------------------------- */
+
+function NewsletterTab({ notify }: { notify: (message: string, kind?: 'error' | 'success') => void }) {
+  const queryClient = useQueryClient();
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [audience, setAudience] = useState('abonnes');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform', 'newsletter'],
+    queryFn: () => get<{
+      subscribers: NewsletterSubscriber[]; campaigns: NewsletterCampaign[];
+      stats: { actifs: number; desinscrits: number; total: number };
+    }>('/platform/newsletter'),
+  });
+
+  const create = useMutation({
+    mutationFn: (sendNow: boolean) => post<{ campaign: NewsletterCampaign }>('/platform/newsletter', { subject, body, audience, send: sendNow }),
+    onSuccess: async (result) => {
+      const campaign = result.campaign;
+      if (campaign.status === 'brouillon') {
+        notify('Campagne enregistrée en brouillon.');
+      } else {
+        await post(`/platform/newsletter/${campaign.id}/send`, {});
+        queryClient.invalidateQueries({ queryKey: ['platform'] });
+        notify(`Campagne envoyée à ${campaign.recipients} abonnés.`);
+      }
+      setSubject('');
+      setBody('');
+    },
+    onError: (err) => notify(err instanceof ApiError ? err.message : 'Envoi impossible.', 'error'),
+  });
+
+  const send = useMutation({
+    mutationFn: (id: string) => post(`/platform/newsletter/${id}/send`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['platform'] });
+      notify('Campagne envoyée.');
+    },
+    onError: (err) => notify(err instanceof ApiError ? err.message : 'Envoi impossible.', 'error'),
+  });
+
+  const campaigns = data?.campaigns ?? [];
+  const subscribers = data?.subscribers ?? [];
+  const stats = data?.stats ?? { actifs: 0, desinscrits: 0, total: 0 };
+
+  return (
+    <div className="stack gap-16">
+      <div className="grid grid-4">
+        <StatCard label="Abonnés actifs" value={formatNumber(stats.actifs)} icon={Mail} tone="primary" />
+        <StatCard label="Désinscrits" value={formatNumber(stats.desinscrits)} icon={XCircle} />
+        <StatCard label="Campagnes envoyées" value={formatNumber(campaigns.filter((c) => c.status === 'envoyee').length)} icon={Send} />
+        <StatCard label="Brouillons" value={formatNumber(campaigns.filter((c) => c.status !== 'envoyee').length)} icon={Pencil} />
+      </div>
+
+      <div className="grid grid-2" style={{ alignItems: 'start' }}>
+        <Card className="card-pad">
+          <h3 className="card-title">Nouvelle campagne</h3>
+          <p className="card-sub">Rédigez votre message, choisissez l'audience et envoyez.</p>
+          <div className="stack gap-14" style={{ marginTop: 12 }}>
+            <Field label="Objet">
+              <Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Ex. Rentrée : découvrez les cartes scolaires NFC" />
+            </Field>
+            <Field label="Message" hint="Le prénom de l'établissement peut être inséré avec {{ecole}}.">
+              <Textarea rows={7} value={body} onChange={(event) => setBody(event.target.value)} placeholder={"Bonjour,\n\nCette rentrée, ..."} />
+            </Field>
+            <Field label="Audience">
+              <Select value={audience} onChange={(event) => setAudience(event.target.value)}>
+                {AUDIENCES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+              </Select>
+            </Field>
+            <div className="row gap-8">
+              <Button
+                variant="secondary"
+                icon={Pencil}
+                loading={create.isPending}
+                disabled={subject.trim().length < 3 || body.trim().length < 10}
+                onClick={() => create.mutate(false)}
+              >
+                Enregistrer en brouillon
+              </Button>
+              <Button
+                variant="primary"
+                icon={Send}
+                loading={create.isPending}
+                disabled={subject.trim().length < 3 || body.trim().length < 10}
+                onClick={() => create.mutate(true)}
+              >
+                Envoyer maintenant
+              </Button>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <div className="card-head">
+            <h3>Campagnes</h3>
+            <Badge tone="neutral">{campaigns.length}</Badge>
+          </div>
+          {isLoading ? (
+            <div className="card-body"><TableSkeleton rows={4} cols={3} /></div>
+          ) : !campaigns.length ? (
+            <div className="card-body"><EmptyState title="Aucune campagne" description="Créez votre première newsletter pour animer votre base." icon={Megaphone} /></div>
+          ) : (
+            <div className="card-body stack gap-10">
+              {campaigns.map((campaign) => (
+                <div key={campaign.id} className="campaign-row">
+                  <div className="grow">
+                    <strong>{campaign.subject}</strong>
+                    <div className="tiny muted">
+                      {campaign.status === 'envoyee'
+                        ? `Envoyée ${relativeTime(campaign.sentAt)} · ${campaign.recipients} destinataires`
+                        : 'Brouillon'}
+                      {' · '}{AUDIENCES.find((a) => a.id === campaign.audience)?.label ?? campaign.audience}
+                    </div>
+                  </div>
+                  {campaign.status === 'envoyee' ? (
+                    <Badge tone="success">Envoyée</Badge>
+                  ) : (
+                    <Button size="sm" variant="soft" icon={Send} loading={send.isPending} onClick={() => send.mutate(campaign.id)}>
+                      Envoyer
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <Card>
+        <div className="card-head">
+          <h3>Abonnés</h3>
+          <Badge tone="neutral">{subscribers.length}</Badge>
+        </div>
+        {!subscribers.length ? (
+          <div className="card-body"><EmptyState title="Pas encore d'abonné" description="Le formulaire du site alimente cette liste automatiquement." icon={Mail} /></div>
+        ) : (
+          <div className="table-wrap" style={{ maxHeight: 420, overflowY: 'auto' }}>
+            <table className="table">
+              <thead>
+                <tr><th>E-mail</th><th>Nom</th><th>Pays</th><th>Source</th><th>Statut</th><th>Inscrit le</th></tr>
+              </thead>
+              <tbody>
+                {subscribers.map((subscriber) => (
+                  <tr key={subscriber.id}>
+                    <td className="strong">{subscriber.email}</td>
+                    <td>{subscriber.name ?? '—'}</td>
+                    <td>{subscriber.countryCode ?? '—'}</td>
+                    <td className="small muted">{subscriber.source ?? '—'}</td>
+                    <td>
+                      <Badge tone={subscriber.status === 'actif' ? 'success' : 'neutral'}>{subscriber.status}</Badge>
+                    </td>
+                    <td className="small">{formatDate(subscriber.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/* ---------------------------------- SMS ---------------------------------- */
+
+function SmsTab() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform', 'sms'],
+    queryFn: () => get<{ items: SmsMessage[]; stats: { total: number; envoyes: number; simules: number }; configured: boolean }>('/platform/sms'),
+  });
+
+  const items = data?.items ?? [];
+
+  return (
+    <div className="stack gap-16">
+      <div className="grid grid-4">
+        <StatCard label="SMS journalisés" value={formatNumber(data?.stats.total ?? 0)} icon={MessageSquare} />
+        <StatCard label="Envoyés (opérateur)" value={formatNumber(data?.stats.envoyes ?? 0)} icon={Send} tone="primary" />
+        <StatCard label="Simulés" value={formatNumber(data?.stats.simules ?? 0)} icon={Headphones} foot="Aucun opérateur configuré" />
+      </div>
+
+      <div className="callout">
+        <MessageSquare size={16} />
+        <div>
+          <strong>{data?.configured ? 'Passerelle SMS connectée' : 'Mode simulation'}</strong>
+          <p className="small">
+            {data?.configured
+              ? "Les SMS sont transmis à l'opérateur configuré (SMS_API_URL / SMS_API_KEY)."
+              : "Renseignez SMS_API_URL et SMS_API_KEY pour envoyer réellement les SMS. En attendant, chaque message est journalisé ici."}
+          </p>
+        </div>
+      </div>
+
+      <Card>
+        <div className="card-head">
+          <h3>Derniers messages</h3>
+          <Badge tone="neutral">{items.length}</Badge>
+        </div>
+        {isLoading ? (
+          <div className="card-body"><TableSkeleton rows={5} cols={4} /></div>
+        ) : !items.length ? (
+          <div className="card-body"><EmptyState title="Aucun SMS" description="Les alertes envoyées aux parents apparaîtront ici." icon={MessageSquare} /></div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr><th>Destinataire</th><th>Message</th><th>Statut</th><th>Date</th></tr>
+              </thead>
+              <tbody>
+                {items.map((message) => (
+                  <tr key={message.id}>
+                    <td className="strong nowrap">{message.to}</td>
+                    <td className="small">{message.body}</td>
+                    <td>
+                      <Badge tone={message.status === 'envoye' ? 'success' : message.status === 'echec' ? 'danger' : 'neutral'}>
+                        {message.status}
+                      </Badge>
+                    </td>
+                    <td className="small nowrap">{formatDateTime(message.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/* ------------------------------ Intégrations ------------------------------ */
+
+type IntegrationsPayload = {
+  supabase: { configured: boolean; url: string | null; project: string | null; auth: boolean };
+  mail: {
+    configured: boolean; provider: string | null; from: string; replyTo: string | null;
+    counts: { total: number; sent: number; pending: number; failed: number };
+    smtp: { host: string; port: number; user: string };
+  };
+  persistence: { mode: string; version: number | null; lastSyncAt: string | null; lastError: string | null };
+  sms: { configured: boolean; sender: string };
+  ai: {
+    configured: boolean; model: string; origin: string | null; hint: string | null;
+    lastCheck: { ok: boolean; at: string; model: string; latencyMs: number; error: string | null } | null;
+  };
+  settings: { key: string; value: Record<string, unknown>; updatedAt: string }[];
+  emails: { id: string; to: string; subject: string; kind: string; status: string; provider: string | null; error: string | null; createdAt: string; sentAt: string | null }[];
+};
+
+function IntegrationsTab() {
+  const { success, error: toastError } = useToast();
+  const queryClient = useQueryClient();
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['platform', 'integrations'],
+    queryFn: () => get<IntegrationsPayload>('/platform/integrations'),
+  });
+  const stored = (key: string) => (data?.settings ?? []).find((entry) => entry.key === key)?.value ?? {};
+
+  const [mailForm, setMailForm] = useState({
+    provider: 'resend', from: 'School Net Academy <no-reply@schoolnet.academy>',
+    replyTo: 'businesscongo.inf@gmail.com', apiKey: '', smtpHost: '', smtpPort: '587', smtpUser: '', smtpPass: '',
+  });
+  const [testTo, setTestTo] = useState('businesscongo.inf@gmail.com');
+  const [initialised, setInitialised] = useState(false);
+  const [aiForm, setAiForm] = useState({ apiKey: '', model: 'gpt-4o-mini' });
+
+  // Pré-remplissage depuis les réglages enregistrés
+  if (data && !initialised) {
+    const mail = stored('mail') as Record<string, unknown>;
+    setMailForm((current) => ({
+      ...current,
+      provider: String(mail.provider || (data.mail.provider ?? 'resend')),
+      from: String(mail.from || data.mail.from || current.from),
+      replyTo: String(mail.replyTo || data.mail.replyTo || current.replyTo),
+      smtpHost: String(mail.smtpHost || data.mail.smtp.host || ''),
+      smtpPort: String(mail.smtpPort || data.mail.smtp.port || 587),
+      smtpUser: String(mail.smtpUser || data.mail.smtp.user || ''),
+    }));
+    const ai = stored('ai') as Record<string, unknown>;
+    setAiForm((current) => ({ ...current, model: String(ai.model || data.ai.model || current.model) }));
+    setInitialised(true);
+  }
+
+  const saveMail = useMutation({
+    mutationFn: () => put('/platform/integration/mail', {
+      provider: mailForm.provider,
+      from: mailForm.from,
+      replyTo: mailForm.replyTo,
+      apiKey: mailForm.apiKey || undefined,
+      smtpHost: mailForm.smtpHost || null,
+      smtpPort: Number(mailForm.smtpPort) || 587,
+      smtpUser: mailForm.smtpUser || null,
+      smtpPass: mailForm.smtpPass || undefined,
+    }),
+    onSuccess: () => {
+      success('Configuration e-mail enregistrée.');
+      queryClient.invalidateQueries({ queryKey: ['platform'] });
+    },
+    onError: (err) => toastError(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
+  });
+
+  const saveAi = useMutation({
+    mutationFn: () => put('/platform/integration/ai', {
+      apiKey: aiForm.apiKey || undefined,
+      model: aiForm.model,
+    }),
+    onSuccess: () => {
+      success('Clé OpenAI enregistrée : l’assistant répond désormais via le modèle.');
+      setAiForm({ ...aiForm, apiKey: '' });
+      queryClient.invalidateQueries({ queryKey: ['platform'] });
+    },
+    onError: (err) => toastError(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
+  });
+
+  const testAi = useMutation({
+    mutationFn: () => post<{ ok: boolean; latencyMs?: number; model?: string; answer?: string; error?: string }>('/platform/integration/ai/test', {}),
+    onSuccess: (result) => {
+      if (result.ok) success(`Modèle ${result.model} opérationnel (${result.latencyMs} ms).`);
+      else toastError(result.error ?? 'Test impossible.');
+      queryClient.invalidateQueries({ queryKey: ['platform'] });
+    },
+    onError: (err) => toastError(err instanceof ApiError ? err.message : 'Test impossible.'),
+  });
+
+  const testMail = useMutation({
+    mutationFn: () => post<{ ok: boolean; status: string; error?: string }>('/platform/integration/mail/test', { to: testTo }),
+    onSuccess: (result) => {
+      if (result.status === 'envoye') success(`E-mail de test envoyé à ${testTo}.`);
+      else toastError(result.error ?? "Envoi impossible : vérifiez la configuration.");
+      queryClient.invalidateQueries({ queryKey: ['platform'] });
+    },
+    onError: (err) => toastError(err instanceof ApiError ? err.message : 'Test impossible.'),
+  });
+
+  if (isLoading) {
+    return <Card className="card-pad"><TableSkeleton rows={4} cols={3} /></Card>;
+  }
+
+  const mail = data?.mail;
+  const supabase = data?.supabase;
+  const persistence = data?.persistence;
+
+  return (
+    <div className="stack gap-16">
+      <div className="grid grid-4">
+        <Card className="card-pad">
+          <div className="row gap-10">
+            <span className={`status-dot ${supabase?.configured ? 'on' : 'off'}`} />
+            <div className="grow">
+              <div className="strong">Supabase</div>
+              <div className="tiny muted">{supabase?.configured ? supabase.project : 'Non configuré'}</div>
+            </div>
+            <Badge tone={supabase?.configured ? 'success' : 'neutral'}>{supabase?.configured ? 'Connecté' : 'Inactif'}</Badge>
+          </div>
+          <p className="small muted" style={{ marginTop: 10 }}>
+            Persistance des données et envoi des e-mails de réinitialisation.
+          </p>
+        </Card>
+        <Card className="card-pad">
+          <div className="row gap-10">
+            <span className={`status-dot ${mail?.configured ? 'on' : 'off'}`} />
+            <div className="grow">
+              <div className="strong">E-mails</div>
+              <div className="tiny muted">{mail?.configured ? (mail.provider === 'resend' ? 'Resend' : 'SMTP') : 'Aucun expéditeur'}</div>
+            </div>
+            <Badge tone={mail?.configured ? 'success' : 'warning'}>{mail?.configured ? 'Actif' : 'À configurer'}</Badge>
+          </div>
+          <p className="small muted" style={{ marginTop: 10 }}>
+            {mail?.counts.sent ?? 0} envoyés · {mail?.counts.pending ?? 0} en attente · {mail?.counts.failed ?? 0} échecs
+          </p>
+        </Card>
+        <Card className="card-pad">
+          <div className="row gap-10">
+            <span className={`status-dot ${persistence?.mode === 'supabase' ? 'on' : 'off'}`} />
+            <div className="grow">
+              <div className="strong">Persistance</div>
+              <div className="tiny muted">{persistence?.mode === 'supabase' ? 'Supabase (durable)' : 'Locale (/tmp)'}</div>
+            </div>
+            <Badge tone={persistence?.mode === 'supabase' ? 'success' : 'warning'}>
+              {persistence?.mode === 'supabase' ? 'Sauvegardé' : 'Éphémère'}
+            </Badge>
+          </div>
+          <p className="small muted" style={{ marginTop: 10 }}>
+            {persistence?.lastSyncAt ? `Dernière sauvegarde : ${formatDateTime(persistence.lastSyncAt)}` : 'Aucune sauvegarde encore.'}
+          </p>
+        </Card>
+        <Card className="card-pad">
+          <div className="row gap-10">
+            <span className={`status-dot ${data?.ai?.configured ? 'on' : 'off'}`} />
+            <div className="grow">
+              <div className="strong">Assistant IA</div>
+              <div className="tiny muted">{data?.ai?.configured ? data.ai.model : 'Base locale'}</div>
+            </div>
+            <Badge tone={data?.ai?.configured ? 'success' : 'neutral'}>
+              {data?.ai?.configured ? 'OpenAI' : 'Local'}
+            </Badge>
+          </div>
+          <p className="small muted" style={{ marginTop: 10 }}>
+            {data?.ai?.configured ? 'Réponses générées par OpenAI.' : 'Réponses issues de la base de connaissances.'}
+          </p>
+        </Card>
+      </div>
+
+      <Card>
+        <div className="card-head">
+          <div>
+            <h3>Envoi des e-mails</h3>
+            <p className="small muted">
+              Réservations, reçus de paiement, newsletter, liens de réinitialisation : tout passe par ce fournisseur.
+            </p>
+          </div>
+          <Button size="sm" variant="secondary" icon={RefreshCw} onClick={() => refetch()}>Actualiser</Button>
+        </div>
+        <div className="card-body stack gap-14">
+          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <Field label="Fournisseur">
+              <Select value={mailForm.provider} onChange={(event) => setMailForm({ ...mailForm, provider: event.target.value })}>
+                <option value="resend">Resend (clé API — recommandé)</option>
+                <option value="smtp">SMTP (Gmail, Brevo, Mailjet…)</option>
+                <option value="none">Désactivé</option>
+              </Select>
+            </Field>
+            <Field label="Adresse d'expédition">
+              <Input value={mailForm.from} onChange={(event) => setMailForm({ ...mailForm, from: event.target.value })} placeholder="School Net Academy <no-reply@votre-domaine.cg>" />
+            </Field>
+          </div>
+
+          {mailForm.provider === 'resend' ? (
+            <Field label="Clé API Resend" hint="resend.com → API Keys (gratuit : 3 000 e-mails/mois).">
+              <Input type="password" value={mailForm.apiKey} onChange={(event) => setMailForm({ ...mailForm, apiKey: event.target.value })} placeholder="re_••••••••" />
+            </Field>
+          ) : mailForm.provider === 'smtp' ? (
+            <div className="grid" style={{ gridTemplateColumns: '2fr 1fr 2fr 2fr', gap: 14 }}>
+              <Field label="Serveur SMTP">
+                <Input value={mailForm.smtpHost} onChange={(event) => setMailForm({ ...mailForm, smtpHost: event.target.value })} placeholder="smtp.brevo.com" />
+              </Field>
+              <Field label="Port">
+                <Input value={mailForm.smtpPort} onChange={(event) => setMailForm({ ...mailForm, smtpPort: event.target.value })} placeholder="587" />
+              </Field>
+              <Field label="Utilisateur">
+                <Input value={mailForm.smtpUser} onChange={(event) => setMailForm({ ...mailForm, smtpUser: event.target.value })} placeholder="apikey@…" />
+              </Field>
+              <Field label="Mot de passe / clé">
+                <Input type="password" value={mailForm.smtpPass} onChange={(event) => setMailForm({ ...mailForm, smtpPass: event.target.value })} placeholder="••••••••" />
+              </Field>
+            </div>
+          ) : null}
+
+          <Field label="Adresse de réponse" hint="Les réponses des établissements arrivent ici.">
+            <Input value={mailForm.replyTo} onChange={(event) => setMailForm({ ...mailForm, replyTo: event.target.value })} />
+          </Field>
+
+          <div className="row gap-10 wrap">
+            <Button variant="primary" icon={MailCheck} loading={saveMail.isPending} onClick={() => saveMail.mutate()}>
+              Enregistrer la configuration
+            </Button>
+            <div className="row gap-8" style={{ alignItems: 'center' }}>
+              <Input value={testTo} onChange={(event) => setTestTo(event.target.value)} placeholder="votre@adresse.com" style={{ minWidth: 260 }} />
+              <Button variant="secondary" icon={Send} loading={testMail.isPending} onClick={() => testMail.mutate()}>
+                Envoyer un test
+              </Button>
+            </div>
+          </div>
+          {!mail?.configured && (
+            <div className="callout warning">
+              <AlertTriangle size={17} />
+              <div>
+                <strong>Aucun expéditeur configuré</strong>
+                <p className="small">
+                  Les messages (identifiants, reçus, newsletter) sont conservés en file d’attente et seront envoyés
+                  dès qu’un fournisseur sera actif. La réinitialisation de mot de passe fonctionne déjà via Supabase.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card>
+        <div className="card-head">
+          <div>
+            <h3>Assistant IA (OpenAI)</h3>
+            <p className="small muted">
+              Collez la clé secrète de votre projet OpenAI : l’assistant « School Net IA » répond alors avec le
+              modèle choisi, immédiatement et sans redéploiement. Sans clé, il répond depuis la base de
+              connaissances locale.
+            </p>
+          </div>
+          <Badge tone={data?.ai?.configured ? 'success' : 'warning'}>
+            {data?.ai?.configured ? 'Clé active' : 'Aucune clé'}
+          </Badge>
+        </div>
+        <div className="card-body stack gap-14">
+          <div className="grid" style={{ gridTemplateColumns: '2fr 1fr', gap: 14 }}>
+            <Field
+              label="Clé API secrète (sk-…)"
+              hint={data?.ai?.hint
+                ? `Clé enregistrée : ${data.ai.hint} · source : ${data.ai.origin === 'env' ? 'variable d’environnement' : 'interface'}. Laissez vide pour la conserver.`
+                : 'platform.openai.com → API keys → « Create new secret key ». La clé complète ne s’affiche qu’une seule fois : copiez-la immédiatement.'}
+            >
+              <Input
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                value={aiForm.apiKey}
+                onChange={(event) => setAiForm({ ...aiForm, apiKey: event.target.value })}
+                placeholder={data?.ai?.configured ? 'Laisser vide pour conserver la clé actuelle' : 'sk-proj-…'}
+              />
+            </Field>
+            <Field label="Modèle">
+              <Select value={aiForm.model} onChange={(event) => setAiForm({ ...aiForm, model: event.target.value })}>
+                <option value="gpt-4o-mini">gpt-4o-mini (rapide, économique)</option>
+                <option value="gpt-4o">gpt-4o</option>
+                <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+                <option value="gpt-4.1">gpt-4.1 (le plus précis)</option>
+              </Select>
+            </Field>
+          </div>
+
+          <div className="row gap-10 wrap">
+            <Button variant="primary" icon={Save} loading={saveAi.isPending} onClick={() => saveAi.mutate()}>
+              Enregistrer la clé
+            </Button>
+            <Button variant="secondary" icon={Sparkles} loading={testAi.isPending} onClick={() => testAi.mutate()}>
+              Tester l’assistant
+            </Button>
+            {data?.ai?.lastCheck && (
+              <span className={`row gap-8 small ${data.ai.lastCheck.ok ? 'success-text' : 'error-text'}`} style={{ alignItems: 'center' }}>
+                <span className={`status-dot ${data.ai.lastCheck.ok ? 'on' : 'off'}`} />
+                {data.ai.lastCheck.ok
+                  ? `Dernier test réussi · ${data.ai.lastCheck.model} · ${data.ai.lastCheck.latencyMs} ms · ${formatDateTime(data.ai.lastCheck.at)}`
+                  : `Dernier test en échec · ${data.ai.lastCheck.error ?? 'erreur inconnue'}`}
+              </span>
+            )}
+          </div>
+
+          {!data?.ai?.configured && (
+            <div className="callout warning">
+              <AlertTriangle size={17} />
+              <div>
+                <strong>Clé OpenAI non renseignée</strong>
+                <p className="small">
+                  L’assistant fonctionne en mode local : il répond aux questions fréquentes (abonnements, cartes
+                  NFC, présences, paiements, newsletter) sans appeler OpenAI. Dès qu’une clé valide est enregistrée,
+                  les réponses passent par le modèle choisi.
+                </p>
+              </div>
+            </div>
+          )}
+          {data?.ai?.configured && data?.ai?.lastCheck && !data.ai.lastCheck.ok && (
+            <div className="callout warning">
+              <KeyRound size={17} />
+              <div>
+                <strong>La clé est enregistrée mais le dernier appel a échoué</strong>
+                <p className="small">
+                  {data.ai.lastCheck.error}. Vérifiez que la clé est complète (elle commence par <code>sk-</code> et
+                  fait plus de 40 caractères), qu’elle est active et que le projet dispose d’un crédit. Une clé
+                  révoquée renvoie « 401 clé API refusée ».
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card>
+        <div className="card-head">
+          <h3>Derniers e-mails</h3>
+          <Badge tone="neutral">{(data?.emails ?? []).length} messages</Badge>
+        </div>
+        {(data?.emails ?? []).length === 0 ? (
+          <div className="card-body">
+            <EmptyState title="Aucun e-mail" description="Les confirmations d'inscription, reçus et campagnes apparaîtront ici." icon={Mail} />
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead><tr><th>Destinataire</th><th>Objet</th><th>Type</th><th>Statut</th><th>Date</th></tr></thead>
+              <tbody>
+                {(data?.emails ?? []).map((email) => (
+                  <tr key={email.id}>
+                    <td className="strong nowrap">{email.to}</td>
+                    <td className="small">{email.subject}</td>
+                    <td className="small muted">{email.kind}</td>
+                    <td>
+                      <Badge tone={email.status === 'envoye' ? 'success' : email.status === 'echec' ? 'danger' : 'warning'}>
+                        {email.status === 'envoye' ? 'envoyé' : email.status === 'echec' ? 'échec' : 'en attente'}
+                      </Badge>
+                    </td>
+                    <td className="small nowrap">{formatDateTime(email.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+export default Platform;
