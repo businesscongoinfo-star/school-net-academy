@@ -70,10 +70,11 @@ export const ready = (async () => {
   const admins = ensureSuperAdmins();
   const superAdmin = admins?.primary ?? null;
   if (admins) {
-    // Miroir Supabase Auth pour chaque adresse : récupération de mot de passe incluse.
+    // Miroir Supabase Auth (récupération de mot de passe) : jamais bloquant pour
+    // le démarrage — un Supabase lent ne doit pas retarder le service.
     for (const account of [admins.primary, ...admins.aliases]) {
       if (!account) continue;
-      await syncAuthUser({
+      void syncAuthUser({
         email: account.email,
         password: process.env.SUPERADMIN_PASSWORD,
         name: process.env.SUPERADMIN_NAME || 'Super administrateur',
@@ -92,9 +93,18 @@ export const ready = (async () => {
   console.log('[boot]', JSON.stringify(bootResult));
   return bootResult;
 })().catch((error) => {
+  const message = String(error?.message ?? error);
   console.error('[boot] échec :', error);
   // On laisse l'application démarrer : mieux vaut un service dégradé qu'un 500 total.
-  return { error: String(error?.message ?? error) };
+  // L'erreur reste visible dans /api/health (champ boot.error) pour le diagnostic.
+  bootResult = {
+    restored: null,
+    superAdmin: null,
+    persistence: persistenceMode(),
+    users: (() => { try { return dbGet('SELECT COUNT(*) AS c FROM users')?.c ?? 0; } catch { return null; } })(),
+    error: message,
+  };
+  return bootResult;
 });
 
 export const bootInfo = () => bootResult;

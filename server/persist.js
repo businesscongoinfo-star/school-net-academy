@@ -44,9 +44,12 @@ async function remoteVersion() {
 export async function restore() {
   if (!supabaseConfigured) return { restored: false, mode: 'local' };
   try {
-    let state = await fetchState().catch(() => null);
-    if (!state) {
-      // Deuxième tentative : le premier appel à froid peut dépasser le délai.
+    // Jusqu'à trois tentatives, avec un budget total de 25 s : le premier appel à
+    // froid dépasse souvent le délai, mais on ne doit jamais dépasser la limite
+    // d'exécution de la fonction serverless (60 s).
+    const deadline = Date.now() + 25_000;
+    let state = null;
+    for (let attempt = 0; attempt < 3 && !state && Date.now() < deadline; attempt += 1) {
       state = await fetchState().catch(() => null);
     }
     if (!state?.payload) return { restored: false, mode: 'supabase', version: 0 };
