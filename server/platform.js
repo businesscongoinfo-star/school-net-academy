@@ -288,6 +288,28 @@ export async function notifyGuardian(studentId, { kind, title, body, sms, link =
   return student;
 }
 
+/**
+ * Retire les comptes d'équipe de démonstration d'une base de production
+ * (les données créées par le propriétaire ne sont jamais touchées).
+ */
+export function pruneDemoStaff() {
+  if (!process.env.VERCEL || process.env.SEED_DEMO_STAFF === '1') return [];
+  const emails = [
+    'superadmin@schoolnet.academy', 'gestion@schoolnet.academy', 'support@schoolnet.academy',
+    'finance@schoolnet.academy', 'marketing@schoolnet.academy', 'closer@schoolnet.academy',
+  ];
+  const removed = [];
+  for (const email of emails) {
+    const row = get('SELECT id FROM users WHERE lower(email) = ? AND platform_role IS NOT NULL', email);
+    if (!row) continue;
+    run('DELETE FROM notifications WHERE user_id = ?', row.id);
+    run('DELETE FROM impersonation_tokens WHERE user_id = ?', row.id);
+    run('DELETE FROM users WHERE id = ?', row.id);
+    removed.push(email);
+  }
+  return removed;
+}
+
 /** Compte super administrateur réel, créé/à jour depuis les variables d'environnement. */
 export function ensureSuperAdmin() {
   const email = String(process.env.SUPERADMIN_EMAIL || '').trim().toLowerCase();

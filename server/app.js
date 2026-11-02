@@ -37,7 +37,7 @@ import platformRoutes, { ensurePlatformSeed } from './routes/platform.js';
 import notificationRoutes from './routes/notifications.js';
 import newsletterRoutes from './routes/newsletter.js';
 import aiRoutes from './routes/ai.js';
-import { tenantOf, accessState, ensureSuperAdmin } from './platform.js';
+import { tenantOf, accessState, ensureSuperAdmin, pruneDemoStaff } from './platform.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(__dirname, '..', 'web', 'dist');
@@ -65,6 +65,8 @@ export const ready = (async () => {
     seed();
   }
   ensurePlatformSeed();
+  const prunedStaff = pruneDemoStaff();
+  if (prunedStaff.length) console.log('[boot] comptes de démonstration retirés :', prunedStaff.join(', '));
   const superAdmin = ensureSuperAdmin();
   if (superAdmin && process.env.SUPERADMIN_PASSWORD) {
     await syncAuthUser({
