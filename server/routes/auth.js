@@ -7,6 +7,11 @@ import {
 } from '../auth.js';
 import { parseBody, asyncHandler, HttpError, badRequest } from '../helpers.js';
 import { tenantPublic, accessState, tenantOf } from '../platform.js';
+import {
+  supabaseAuthEnabled, requestPasswordRecovery, userFromAccessToken, setPasswordWithAccessToken,
+  syncAuthUser, updateAuthPassword, logEvent,
+} from '../supabase.js';
+import { sendMail, resetEmail, passwordChangedEmail } from '../mailer.js';
 
 const router = Router();
 
@@ -33,6 +38,12 @@ router.post('/login', asyncHandler(async (req, res) => {
   attempts.delete(key);
 
   run('UPDATE users SET last_login_at = ? WHERE id = ?', now(), user.id);
+  // Miroir Supabase Auth (asynchrone) : garantit qu'un e-mail de réinitialisation
+  // pourra être envoyé à ce compte, même s'il a été créé avant l'intégration.
+  if (supabaseAuthEnabled) {
+    syncAuthUser({ email: user.email, password, name: user.name }).catch(() => {});
+    logEvent('login', { email: user.email, platform: process.env.VERCEL ? 'vercel' : 'node' });
+  }
   const { token, expiresAt } = createSession(user.id);
   res.setHeader('Set-Cookie', sessionCookie(token));
   const tenant = tenantOf(user) ? tenantPublic(tenantOf(user)) : null;
@@ -66,32 +77,55 @@ router.get('/me', requireAuth, (req, res) => {
   });
 });
 
-/** Mot de passe oublié : génère un lien de réinitialisation (30 minutes). */
+/**
+ * Mot de passe oublié — envoi d'un e-mail réel.
+ *  1. Supabase Auth envoie son e-mail de récupération (fonctionne sans SMTP propre,
+ *     quota du service intégré).
+ *  2. Si un fournisseur e-mail est configuré (Resend/SMTP), on envoie aussi notre
+ *     gabarit de marque avec un jeton maison (30 min, usage unique).
+ * Le lien n'est JAMAIS renvoyé dans la réponse HTTP en production.
+ */
 router.post('/forgot', asyncHandler(async (req, res) => {
   const data = parseBody(z.object({ email: z.string().min(4).max(160) }), req.body);
   const email = data.email.toLowerCase().trim();
-  const user = get('SELECT id, email FROM users WHERE lower(email) = ?', email);
+  const user = get('SELECT id, email, name FROM users WHERE lower(email) = ?', email);
   const generic = {
     ok: true,
-    message: "Si un compte existe pour cette adresse, un lien de réinitialisation vient d'être généré.",
+    message: "Si un compte existe pour cette adresse, un lien de réinitialisation vient d'être envoyé par e-mail.",
   };
   if (!user) { res.json(generic); return; }
 
+  const origin = baseUrl(req);
   const token = crypto.randomBytes(24).toString('hex');
   const expires = new Date(Date.now() + 30 * 60 * 1000).toISOString();
   run('INSERT INTO password_resets (token, user_id, expires_at, used_at, created_at) VALUES (?, ?, ?, NULL, ?)',
     token, user.id, expires, now());
 
-  // Sans fournisseur e-mail configuré, le lien est renvoyé pour la démonstration.
-  const emailConfigured = Boolean(process.env.SMTP_URL || process.env.RESEND_API_KEY);
+  const localLink = `${origin}/reinitialiser?token=${token}`;
+  const results = { sent: false, supabase: false, mail: false };
+
+  if (supabaseAuthEnabled) {
+    const recovery = await requestPasswordRecovery(email, `${origin}/reinitialiser`);
+    results.supabase = recovery.sent;
+    results.sent = results.sent || recovery.sent;
+  }
+
+  const mail = await sendMail({
+    to: email,
+    kind: 'reinitialisation',
+    ...resetEmail({ name: user.name, link: localLink, minutes: 30 }),
+  });
+  results.mail = mail.status === 'envoye';
+  results.sent = results.sent || results.mail;
+  await logEvent('password_recovery', { email, ...results });
+
+  // Lien de secours uniquement hors production (développement local / démo).
+  const allowLink = process.env.NODE_ENV !== 'production' || process.env.ALLOW_RESET_LINK === '1';
   res.json({
     ...generic,
-    resetPath: `/reinitialiser?token=${token}`,
-    expiresAt: expires,
-    delivered: emailConfigured,
-    note: emailConfigured
-      ? 'Le lien vient d’être envoyé par e-mail.'
-      : "Aucun service e-mail n'est configuré : utilisez le lien ci-dessous (démonstration).",
+    delivered: results.sent,
+    channels: results,
+    ...(allowLink ? { resetPath: `/reinitialiser?token=${token}`, expiresAt: expires } : {}),
   });
 }));
 
@@ -107,7 +141,42 @@ router.post('/reset', asyncHandler(async (req, res) => {
   const { hashPassword } = await import('../auth.js');
   run('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?', hashPassword(data.password), now(), row.user_id);
   run('UPDATE password_resets SET used_at = ? WHERE token = ?', now(), data.token);
+  const owner = get('SELECT email, name FROM users WHERE id = ?', row.user_id);
+  if (owner) {
+    await sendMail({ to: owner.email, kind: 'securite', ...passwordChangedEmail({ name: owner.name }) });
+    if (supabaseAuthEnabled) {
+      const authId = await syncAuthUser({ email: owner.email, password: data.password, name: owner.name }).catch(() => null);
+      if (authId) await updateAuthPassword(authId, data.password);
+    }
+  }
   res.json({ ok: true, message: 'Mot de passe mis à jour. Vous pouvez vous connecter.' });
+}));
+
+/**
+ * Finalise une réinitialisation initiée par Supabase : le lien reçu par e-mail
+ * revient sur `/reinitialiser#access_token=…`. Le client transmet ce jeton, le
+ * serveur vérifie l'identité auprès de Supabase puis met à jour le mot de passe
+ * applicatif ET celui de Supabase Auth.
+ */
+router.post('/reset-supabase', asyncHandler(async (req, res) => {
+  const data = parseBody(z.object({
+    accessToken: z.string().min(20, 'Jeton invalide.'),
+    password: z.string().min(8, 'Le mot de passe doit contenir au moins 8 caractères.').max(120),
+  }), req.body);
+
+  const supaUser = await userFromAccessToken(data.accessToken);
+  const email = String(supaUser?.email ?? '').toLowerCase().trim();
+  if (!email) throw badRequest('Ce lien de réinitialisation est invalide ou a expiré. Demandez-en un nouveau.');
+
+  const user = get('SELECT * FROM users WHERE lower(email) = ?', email);
+  if (!user) throw badRequest("Aucun compte School Net Academy n'est associé à cette adresse.");
+
+  const { hashPassword } = await import('../auth.js');
+  run('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?', hashPassword(data.password), now(), user.id);
+  await setPasswordWithAccessToken(data.accessToken, data.password);
+  await updateAuthPassword(supaUser.id, data.password);
+  await logEvent('password_reset', { email, channel: 'supabase' });
+  res.json({ ok: true, email, message: 'Mot de passe mis à jour. Vous pouvez vous connecter.' });
 }));
 
 /**
@@ -172,6 +241,31 @@ function authorizeUrl(req, provider, config) {
   }
   return { url: `${config.authorize}?${params.toString()}`, state };
 }
+
+/**
+ * Entrée dans l'espace d'un établissement depuis la super administration
+ * (jeton à usage unique de 15 minutes). Ouvre une session au nom du responsable
+ * pour accompagner le paramétrage initial ou le support.
+ */
+router.get('/impersonate', asyncHandler(async (req, res) => {
+  const token = String(req.query.token ?? '');
+  const row = token ? get('SELECT * FROM impersonation_tokens WHERE token = ?', token) : null;
+  if (!row || row.used_at || new Date(row.expires_at).getTime() < Date.now()) {
+    res.status(410).send(`<!doctype html><meta charset="utf-8"><title>Lien expiré</title>
+      <body style="font-family:system-ui;padding:48px;max-width:520px;margin:auto">
+        <h1 style="font-size:20px">Lien expiré</h1>
+        <p>Ce lien d'accès est invalide ou a déjà été utilisé. Relancez l'action depuis la super administration.</p>
+        <p><a href="/plateforme">Retour à la super administration</a></p>
+      </body>`);
+    return;
+  }
+  run('UPDATE impersonation_tokens SET used_at = ? WHERE token = ?', now(), token);
+  run('UPDATE users SET last_login_at = ? WHERE id = ?', now(), row.user_id);
+  const { token: session } = createSession(row.user_id);
+  res.setHeader('Set-Cookie', sessionCookie(session));
+  await logEvent('impersonation_used', { tenantId: row.tenant_id, user: row.user_id, by: row.created_by });
+  res.redirect('/app');
+}));
 
 router.get('/oauth/:provider', (req, res) => {
   const provider = String(req.params.provider);
@@ -344,6 +438,11 @@ router.post('/password', requireAuth, asyncHandler(async (req, res) => {
   }
   const { hashPassword } = await import('../auth.js');
   run('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?', hashPassword(data.newPassword), now(), req.user.id);
+  if (supabaseAuthEnabled) {
+    const authId = await syncAuthUser({ email: req.user.email, password: data.newPassword, name: req.user.name }).catch(() => null);
+    if (!authId) await updateAuthPassword(authId, data.newPassword);
+  }
+  await sendMail({ to: req.user.email, kind: 'securite', ...passwordChangedEmail({ name: req.user.name }) });
   res.json({ ok: true });
 }));
 

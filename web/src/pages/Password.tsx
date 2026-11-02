@@ -67,8 +67,8 @@ export function ForgotPassword() {
               <strong>{sent.message}</strong>
               <p className="small">
                 {sent.delivered
-                  ? 'Vérifiez votre boîte de réception (et les indésirables). Le lien expire dans 30 minutes.'
-                  : "L'envoi d'e-mails n'est pas configuré sur cette installation : le lien est affiché ci-dessous pour la démonstration."}
+                  ? 'Vérifiez votre boîte de réception (et les indésirables) : le lien expire dans 30 minutes.'
+                  : "Aucun service d'e-mail n'est actif pour le moment. Écrivez-nous à businesscongo.inf@gmail.com : nous rétablissons votre accès sous 24 h."}
               </p>
             </div>
           </div>
@@ -97,7 +97,7 @@ export function ForgotPassword() {
             Envoyer le lien de réinitialisation
           </Button>
           <p className="tiny muted center">
-            Un problème persistant ? Écrivez à <a href="mailto:support@schoolnet.academy">support@schoolnet.academy</a>.
+            Un problème persistant ? Écrivez à <a href="mailto:businesscongo.inf@gmail.com">businesscongo.inf@gmail.com</a>.
           </p>
         </form>
       )}
@@ -105,10 +105,25 @@ export function ForgotPassword() {
   );
 }
 
+/** Supabase renvoie les jetons dans le fragment (#access_token=…) après le clic. */
+function readSupabaseTokens() {
+  if (typeof window === 'undefined') return { accessToken: '', type: '', error: '' };
+  const raw = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash;
+  const hash = new URLSearchParams(raw);
+  const query = new URLSearchParams(window.location.search);
+  return {
+    accessToken: hash.get('access_token') ?? '',
+    type: hash.get('type') ?? '',
+    error: hash.get('error_description') ?? query.get('error_description') ?? '',
+  };
+}
+
 export function ResetPassword() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const token = params.get('token') ?? '';
+  const [supabase] = useState(readSupabaseTokens);
+  const accessToken = supabase.accessToken;
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [pending, setPending] = useState(false);
@@ -122,7 +137,8 @@ export function ResetPassword() {
     if (password !== confirm) return setError('Les deux mots de passe ne correspondent pas.');
     setPending(true);
     try {
-      await post('/auth/reset', { token, password });
+      if (accessToken) await post('/auth/reset-supabase', { accessToken, password });
+      else await post('/auth/reset', { token, password });
       setDone(true);
       window.setTimeout(() => navigate('/connexion', { replace: true }), 1600);
     } catch (err) {
@@ -132,9 +148,17 @@ export function ResetPassword() {
     }
   }
 
-  if (!token) {
+  if (supabase.error) {
     return (
-      <AuthFrame title="Lien invalide" subtitle="Ce lien de réinitialisation est incomplet.">
+      <AuthFrame title="Lien expiré" subtitle={supabase.error}>
+        <Link className="btn btn-primary btn-block" to="/mot-de-passe-oublie">Demander un nouveau lien</Link>
+      </AuthFrame>
+    );
+  }
+
+  if (!token && !accessToken) {
+    return (
+      <AuthFrame title="Lien invalide" subtitle="Ce lien de réinitialisation est incomplet ou a déjà été utilisé.">
         <Link className="btn btn-primary btn-block" to="/mot-de-passe-oublie">Demander un nouveau lien</Link>
       </AuthFrame>
     );

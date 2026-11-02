@@ -72,6 +72,9 @@ const pages = {
   Platform: '/src/pages/Platform.tsx',
   ForgotPassword: '/src/pages/Password.tsx',
   ResetPassword: '/src/pages/Password.tsx',
+  Unsubscribe: '/src/pages/Legal.tsx',
+  Terms: '/src/pages/Legal.tsx',
+  Privacy: '/src/pages/Legal.tsx',
 };
 
 const meta = await realFetch('/api/meta');
@@ -101,6 +104,7 @@ const staff = await realFetch('/api/platform/staff', true);
 const subscriptions = await realFetch('/api/platform/subscriptions', true);
 const newsletter = await realFetch('/api/platform/newsletter', true);
 const sms = await realFetch('/api/platform/sms', true);
+const integrations = await realFetch('/api/platform/integrations', true);
 const notifications = await realFetch('/api/notifications');
 const noFilters = { search: '', classFilter: '', statusFilter: '', typeFilter: '' };
 
@@ -138,6 +142,7 @@ const seed = [
   [['platform', 'subscriptions'], subscriptions],
   [['platform', 'newsletter'], newsletter],
   [['platform', 'sms'], sms],
+  [['platform', 'integrations'], integrations],
   [['notifications'], notifications],
 ];
 for (const [key, data] of seed) queryClient.setQueryData(key, data);
@@ -168,6 +173,9 @@ const routes = {
   Platform: '/plateforme',
   ForgotPassword: '/mot-de-passe-oublie',
   ResetPassword: '/reinitialiser',
+  Unsubscribe: '/desabonnement',
+  Terms: '/conditions',
+  Privacy: '/confidentialite',
   NotFound: '/nope',
 };
 
@@ -197,6 +205,9 @@ const EXPECTATIONS = {
   Platform: ['Super administration', 'Établissements'],
   ForgotPassword: ['Mot de passe oublié'],
   ResetPassword: ['Lien invalide'],
+  Unsubscribe: ['Se désabonner'],
+  Terms: ['Dernière mise à jour'],
+  Privacy: ['Politique de confidentialité'],
 };
 
 let failures = 0;

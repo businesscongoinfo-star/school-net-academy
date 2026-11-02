@@ -32,6 +32,9 @@ const Billing = lazy(() => import('./pages/Billing').then((module) => ({ default
 const Platform = lazy(() => import('./pages/Platform').then((module) => ({ default: module.Platform })));
 const ForgotPassword = lazy(() => import('./pages/Password').then((module) => ({ default: module.ForgotPassword })));
 const ResetPassword = lazy(() => import('./pages/Password').then((module) => ({ default: module.ResetPassword })));
+const Unsubscribe = lazy(() => import('./pages/Legal').then((module) => ({ default: module.Unsubscribe })));
+const Terms = lazy(() => import('./pages/Legal').then((module) => ({ default: module.Terms })));
+const Privacy = lazy(() => import('./pages/Legal').then((module) => ({ default: module.Privacy })));
 
 function Splash() {
   return (
@@ -71,6 +74,9 @@ const TITLES: Record<string, string> = {
   '/inscription': 'Créer mon établissement',
   '/mot-de-passe-oublie': 'Mot de passe oublié',
   '/reinitialiser': 'Nouveau mot de passe',
+  '/desabonnement': 'Désabonnement',
+  '/conditions': "Conditions d'utilisation",
+  '/confidentialite': 'Politique de confidentialité',
   '/plateforme': 'Super administration',
 };
 
@@ -128,6 +134,9 @@ export function App() {
       <Route path="/inscription" element={page(<Signup />)} />
       <Route path="/mot-de-passe-oublie" element={page(<ForgotPassword />)} />
       <Route path="/reinitialiser" element={page(<ResetPassword />)} />
+      <Route path="/desabonnement" element={page(<Unsubscribe />)} />
+      <Route path="/conditions" element={page(<Terms />)} />
+      <Route path="/confidentialite" element={page(<Privacy />)} />
       <Route
         path="/plateforme"
         element={(

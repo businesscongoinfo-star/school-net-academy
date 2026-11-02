@@ -1,6 +1,7 @@
 import { all, get, run, now, uid } from './db.js';
 import { HttpError } from './helpers.js';
-import { hashPassword } from './auth.js';
+import { hashPassword, verifyPassword } from './auth.js';
+import { sendMail, renderEmail } from './mailer.js';
 
 /* ------------------------------- Offres ---------------------------------- */
 
@@ -246,8 +247,10 @@ export async function sendSms({ tenantId = null, to, body }) {
 export async function notifyGuardian(studentId, { kind, title, body, sms, link = '/app/mes-enfants' }) {
   const student = get(
     `SELECT s.id, s.first_name AS firstName, s.last_name AS lastName, s.guardian_phone AS guardianPhone,
-            s.guardian_user_id AS guardianUserId, s.tenant_id AS tenantId
-       FROM students s WHERE s.id = ?`,
+            s.guardian_email AS guardianEmail, s.guardian_name AS guardianName,
+            s.guardian_user_id AS guardianUserId, s.tenant_id AS tenantId,
+            t.name AS tenantName, t.currency AS currency
+       FROM students s LEFT JOIN tenants t ON t.id = s.tenant_id WHERE s.id = ?`,
     studentId,
   );
   if (!student) return;
@@ -262,6 +265,59 @@ export async function notifyGuardian(studentId, { kind, title, body, sms, link =
   if (student.guardianPhone && sms) {
     await sendSms({ tenantId: student.tenantId ?? null, to: student.guardianPhone, body: sms });
   }
+  // E-mail réel au tuteur (dès qu'un fournisseur est configuré).
+  if (student.guardianEmail) {
+    await sendMail({
+      to: student.guardianEmail,
+      kind,
+      subject: title,
+      html: renderEmail({
+        title,
+        preheader: body ?? title,
+        intro: `Bonjour ${student.guardianName || 'cher parent'},`,
+        blocks: [
+          { text: body ?? title },
+          { text: `Élève : <strong>${student.firstName} ${student.lastName}</strong>` },
+          student.tenantName ? { text: `Établissement : ${student.tenantName}` } : { text: '' },
+        ].filter((block) => block.text),
+        cta: { label: 'Ouvrir mon espace parent', url: `${(process.env.APP_URL || 'https://school-net-academy.vercel.app').replace(/\/$/, '')}/connexion` },
+        footnote: 'Vous recevez cet e-mail en tant que tuteur enregistré auprès de l’établissement.',
+      }),
+    }).catch(() => null);
+  }
+  return student;
+}
+
+/** Compte super administrateur réel, créé/à jour depuis les variables d'environnement. */
+export function ensureSuperAdmin() {
+  const email = String(process.env.SUPERADMIN_EMAIL || '').trim().toLowerCase();
+  const password = process.env.SUPERADMIN_PASSWORD || '';
+  const name = process.env.SUPERADMIN_NAME || 'Super administrateur';
+  if (!email || !password) return null;
+
+  const ts = now();
+  const existing = get('SELECT * FROM users WHERE lower(email) = ?', email);
+  if (existing) {
+    if (existing.platform_role !== 'owner') {
+      run("UPDATE users SET platform_role = 'owner', title = ?, updated_at = ? WHERE id = ?",
+        name, ts, existing.id);
+    }
+    if (!verifyPassword(password, existing.password_hash)) {
+      run('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?', hashPassword(password), ts, existing.id);
+      return { id: existing.id, created: false, passwordReset: true, email };
+    }
+    return { id: existing.id, created: false, passwordReset: false, email };
+  }
+
+  const id = process.env.SUPERADMIN_ID || 'usr_superadmin';
+  run(
+    `INSERT INTO users (id, email, password_hash, name, role, phone, title, avatar_color, platform_role,
+       tenant_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'admin', ?, ?, '#0f766e', 'owner', NULL, ?, ?)`,
+    id, email, hashPassword(password), name, process.env.SUPERADMIN_PHONE || null,
+    name, ts, ts,
+  );
+  return { id, created: true, passwordReset: false, email };
 }
 
 /** Liste des abonnés « actifs » pour une campagne. */

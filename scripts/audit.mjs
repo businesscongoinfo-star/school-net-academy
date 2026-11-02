@@ -998,6 +998,80 @@ async function main() {
     expect(res.status === 401, `statut ${res.status}`);
   });
 
+  // ─── Intégrations Supabase, e-mails et persistance ───────────────────────
+  let createdTenantId = null;
+  await check('Intégrations', 'GET /api/platform/integrations', async () => {
+    const json = await superClient.ok('GET', '/api/platform/integrations');
+    expect(typeof json.supabase?.configured === 'boolean', 'état Supabase absent');
+    expect(typeof json.mail?.configured === 'boolean', 'état e-mail absent');
+    expect(['supabase', 'local'].includes(json.persistence?.mode), 'mode de persistance inconnu');
+    expect(Array.isArray(json.emails), 'journal e-mail absent');
+    return `supabase ${json.supabase.configured ? 'connecté' : 'non configuré'} · persistance ${json.persistence.mode}`;
+  });
+
+  await check('Intégrations', 'GET /api/health expose les intégrations', async () => {
+    const res = await fetch(`${BASE}/api/health`);
+    const json = await res.json();
+    expect(json.ok === true, 'santé non conforme');
+    expect(typeof json.persistence === 'string', 'persistance absente');
+    return `${json.persistence} · e-mail ${json.email}`;
+  });
+
+  await check('Intégrations', 'Création d’établissement avec mot de passe généré', async () => {
+    const res = await superClient.post('/api/platform/tenants', {
+      name: 'Institut Audit Intégrations',
+      kind: 'universite',
+      country: 'Congo-Brazzaville',
+      countryCode: 'CG',
+      currency: 'XAF',
+      ownerName: 'Audit Responsable',
+      email: 'audit.tenant@schoolnet.academy',
+      plan: 'essentiel',
+      sendEmail: false,
+    });
+    expect(res.status === 201, `statut ${res.status}`);
+    const json = res.json;
+    expect(/^Sna-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(json.temporaryPassword ?? ''), 'mot de passe provisoire non généré');
+    createdTenantId = json.tenant.id;
+    const login = await new Client('tenant').post('/api/auth/login', {
+      email: 'audit.tenant@schoolnet.academy', password: json.temporaryPassword,
+    });
+    expect(login.status === 200, 'connexion avec le mot de passe provisoire impossible');
+    expect(login.json.user.tenant?.id === createdTenantId, 'établissement non rattaché');
+    return `${json.tenant.name} · ${json.temporaryPassword}`;
+  });
+
+  await check('Intégrations', 'Jeton d’accès à un espace client', async () => {
+    const json = await superClient.ok('POST', `/api/platform/tenants/${createdTenantId}/impersonate`);
+    expect(String(json.url).startsWith('/api/auth/impersonate?token='), 'URL d’accès absente');
+    const res = await fetch(`${BASE}${json.url}`, { redirect: 'manual' });
+    expect([302, 200].includes(res.status), `statut ${res.status}`);
+    const cookie = res.headers.get('set-cookie') ?? '';
+    expect(cookie.includes('sna_session='), 'session non ouverte');
+    return `jeton ${json.expiresIn}s · redirection ${res.status}`;
+  });
+
+  await check('Intégrations', 'Réinitialisation : e-mail mis en file', async () => {
+    const res = await new Client('forgot').post('/api/auth/forgot', { email: 'direction@schoolnet.academy' });
+    expect(res.status === 200, `statut ${res.status}`);
+    expect(res.json.ok === true, 'réponse non conforme');
+    const emails = await superClient.ok('GET', '/api/platform/emails');
+    expect(emails.items.some((item) => item.kind === 'reinitialisation'), 'message absent du journal');
+    return `${emails.items[0]?.status ?? 'en file'} · ${emails.configured ? 'expéditeur actif' : 'expéditeur à configurer'}`;
+  });
+
+  await check('Intégrations', 'Newsletter : envoi journalisé par destinataire', async () => {
+    const created = await superClient.post('/api/platform/newsletter', {
+      subject: 'Audit intégrations', body: 'Message de vérification automatique des envois.', audience: 'abonnes', send: false,
+    });
+    expect(created.status === 201, `création → ${created.status}`);
+    const campaign = created.json;
+    const sent = await superClient.ok('POST', `/api/platform/newsletter/${campaign.campaign.id}/send`);
+    expect(sent.recipients >= 1, 'aucun destinataire');
+    expect(typeof sent.failed === 'number', 'compteur d’échecs absent');
+    return `${sent.recipients} destinataires · ${sent.delivered ?? 0} envoyés · ${sent.queued ?? 0} en file`;
+  });
+
   // ─── Restitution ─────────────────────────────────────────────────────────
   console.log('');
   for (const [group, items] of groups) {

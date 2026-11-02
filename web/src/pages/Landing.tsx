@@ -503,7 +503,7 @@ export function Landing() {
           <Link to="/connexion" className="btn btn-lg" style={{ background: 'transparent', borderColor: 'rgba(255,255,255,0.35)', color: '#fff' }}>
             <PlayCircle size={16} /> Voir la démo
           </Link>
-          <a href="mailto:contact@schoolnet.academy" className="btn btn-lg" style={{ background: 'transparent', borderColor: 'rgba(255,255,255,0.35)', color: '#fff' }}>
+          <a href="mailto:businesscongo.inf@gmail.com" className="btn btn-lg" style={{ background: 'transparent', borderColor: 'rgba(255,255,255,0.35)', color: '#fff' }}>
             Nous contacter
           </a>
         </div>
@@ -516,11 +516,13 @@ export function Landing() {
           <span className="copy">· Brazzaville, République du Congo</span>
         </div>
         <div className="links">
-          <a href="mailto:contact@schoolnet.academy">contact@schoolnet.academy</a>
+          <a href="mailto:businesscongo.inf@gmail.com">businesscongo.inf@gmail.com</a>
           <span>+242 06 512 44 18</span>
           <Link to="/connexion">Connexion</Link>
           <Link to="/inscription">Créer un compte</Link>
           <Link to="/mot-de-passe-oublie">Mot de passe oublié</Link>
+          <Link to="/conditions">Conditions</Link>
+          <Link to="/confidentialite">Confidentialité</Link>
         </div>
         <div className="lp-footer-newsletter">
           <strong>Restons en contact</strong>

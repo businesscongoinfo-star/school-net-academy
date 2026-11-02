@@ -2,25 +2,25 @@ import { useMemo, useState } from 'react';
 import {
   Building2, CalendarClock, CreditCard, Crown, DollarSign, Headphones, Mail, Megaphone,
   MessageSquare, Pencil, Plus, RefreshCw, Send, ShieldCheck, Target, Trash2, TrendingUp,
-  UserPlus, Users, Wallet, XCircle,
+  UserPlus, Users, Wallet, Wifi, XCircle, Copy, Check, MailCheck, AlertTriangle, LogIn,
 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
-import { ApiError, del, get, patch, post, qs } from '../lib/api';
+import { ApiError, del, get, patch, post, put, qs } from '../lib/api';
 import {
   Badge, Button, Card, EmptyState, Field, IconButton, Input, PageHeader, Select, StatCard,
   TableSkeleton, Textarea,
 } from '../components/ui';
 import { Modal } from '../components/overlays';
 import { useToast } from '../components/toast';
-import { formatCurrency } from '../lib/countries';
+import { COUNTRIES, formatCurrency } from '../lib/countries';
 import { formatDate, formatDateTime, formatNumber, relativeTime } from '../lib/format';
 import type {
   NewsletterCampaign, NewsletterSubscriber, PlatformOverview, PlatformStaff, PlatformTenant,
   PlatformRole, SmsMessage, SubscriptionInvoice, TenantSummary,
 } from '../lib/types';
 
-type TabId = 'overview' | 'tenants' | 'staff' | 'subscriptions' | 'newsletter' | 'sms';
+type TabId = 'overview' | 'tenants' | 'staff' | 'subscriptions' | 'newsletter' | 'sms' | 'integrations';
 
 const TABS: { id: TabId; label: string; icon: typeof Building2 }[] = [
   { id: 'overview', label: "Vue d'ensemble", icon: TrendingUp },
@@ -29,11 +29,12 @@ const TABS: { id: TabId; label: string; icon: typeof Building2 }[] = [
   { id: 'subscriptions', label: 'Abonnements', icon: Wallet },
   { id: 'newsletter', label: 'Newsletter', icon: Megaphone },
   { id: 'sms', label: 'Journal SMS', icon: MessageSquare },
+  { id: 'integrations', label: 'Intégrations', icon: Wifi },
 ];
 
 const ROLE_CAPS: Record<PlatformRole, TabId[]> = {
-  owner: ['overview', 'tenants', 'staff', 'subscriptions', 'newsletter', 'sms'],
-  manager: ['overview', 'tenants', 'staff', 'subscriptions', 'newsletter', 'sms'],
+  owner: ['overview', 'tenants', 'staff', 'subscriptions', 'newsletter', 'sms', 'integrations'],
+  manager: ['overview', 'tenants', 'staff', 'subscriptions', 'newsletter', 'sms', 'integrations'],
   support: ['overview', 'tenants', 'staff', 'sms'],
   finance: ['overview', 'tenants', 'subscriptions', 'sms'],
   marketing: ['overview', 'newsletter'],
@@ -159,6 +160,7 @@ export function Platform() {
         />
       )}
       {activeTab === 'sms' && <SmsTab />}
+      {activeTab === 'integrations' && <IntegrationsTab />}
     </div>
   );
 }
@@ -285,6 +287,7 @@ function TenantsTab({ canManage, onChanged }: { canManage: boolean; onChanged: (
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [target, setTarget] = useState<TenantSummary | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['platform', 'tenants', search, status],
@@ -321,6 +324,9 @@ function TenantsTab({ canManage, onChanged }: { canManage: boolean; onChanged: (
           </Select>
           <div className="grow" />
           <Badge tone="neutral">{items.length} établissement{items.length > 1 ? 's' : ''}</Badge>
+          <Button variant="primary" icon={Plus} disabled={!canManage} onClick={() => setCreating(true)}>
+            Nouvel établissement
+          </Button>
         </div>
       </Card>
 
@@ -367,6 +373,21 @@ function TenantsTab({ canManage, onChanged }: { canManage: boolean; onChanged: (
                       <td>{formatDate(tenant.createdAt)}</td>
                       <td>
                         <div className="row gap-6" style={{ justifyContent: 'flex-end' }}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon={LogIn}
+                            onClick={async () => {
+                              try {
+                                const { url } = await post<{ url: string }>(`/platform/tenants/${tenant.id}/impersonate`);
+                                window.location.assign(url);
+                              } catch (err) {
+                                toastError(err instanceof ApiError ? err.message : 'Accès impossible.');
+                              }
+                            }}
+                          >
+                            Ouvrir
+                          </Button>
                           <Button size="sm" variant="soft" icon={CreditCard} onClick={() => setTarget(tenant)} disabled={!canManage}>
                             Abonner
                           </Button>
@@ -391,7 +412,160 @@ function TenantsTab({ canManage, onChanged }: { canManage: boolean; onChanged: (
       </Card>
 
       <ConvertModal tenant={target} onClose={() => setTarget(null)} onDone={() => { onChanged(); setTarget(null); }} />
+      <CreateTenantModal
+        open={creating}
+        onClose={() => setCreating(false)}
+        onDone={() => { onChanged(); }}
+        notify={(message, kind) => (kind === 'error' ? toastError(message) : success(message))}
+      />
     </div>
+  );
+}
+
+/* --------------------------- Nouvel établissement ------------------------- */
+
+function CreateTenantModal({
+  open, onClose, onDone, notify,
+}: { open: boolean; onClose: () => void; onDone: () => void; notify: (message: string, kind?: 'success' | 'error') => void }) {
+  const [form, setForm] = useState({
+    name: '', kind: 'ecole' as 'ecole' | 'universite' | 'mixte', country: 'Congo-Brazzaville',
+    countryCode: 'CG', currency: 'XAF', ownerName: '', email: '', phone: '', plan: 'pro',
+  });
+  const [result, setResult] = useState<{ temporaryPassword: string; email: string; emailStatus: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const create = useMutation({
+    mutationFn: () => post<{ temporaryPassword: string; owner: { email: string }; emailStatus: string }>('/platform/tenants', {
+      ...form, phone: form.phone || null,
+    }),
+    onSuccess: (data) => {
+      setResult({ temporaryPassword: data.temporaryPassword, email: data.owner.email, emailStatus: data.emailStatus });
+      notify('Établissement créé — communiquez le mot de passe provisoire.');
+      onDone();
+    },
+    onError: (err) => notify(err instanceof ApiError ? err.message : 'Création impossible.', 'error'),
+  });
+
+  const currentCountry = COUNTRIES.find((entry) => entry.code === form.countryCode)
+    ?? COUNTRIES.find((entry) => entry.name === form.country);
+
+  const close = () => {
+    setResult(null);
+    setCopied(false);
+    setForm({ ...form, name: '', ownerName: '', email: '', phone: '' });
+    onClose();
+  };
+
+  return (
+    <Modal open={open} onClose={close} title={result ? 'Espace créé' : 'Créer un établissement'} wide>
+      {result ? (
+        <div className="stack gap-16">
+          <div className="callout success">
+            <Check size={17} />
+            <div>
+              <strong>Le compte est prêt.</strong>
+              <p className="small">
+                {result.emailStatus === 'envoye'
+                  ? `Les identifiants ont été envoyés à ${result.email}.`
+                  : "L'e-mail n'a pas pu partir (aucun fournisseur configuré) : transmettez ces identifiants au responsable."}
+              </p>
+            </div>
+          </div>
+          <Card className="card-pad" style={{ background: 'var(--surface-2)' }}>
+            <div className="stack gap-8">
+              <div className="row gap-8" style={{ justifyContent: 'space-between' }}>
+                <div>
+                  <div className="tiny muted">Identifiant</div>
+                  <div className="strong">{result.email}</div>
+                </div>
+              </div>
+              <div className="row gap-8" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div className="tiny muted">Mot de passe provisoire</div>
+                  <code style={{ fontSize: 16, fontWeight: 700 }}>{result.temporaryPassword}</code>
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={copied ? Check : Copy}
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(`Identifiant : ${result.email}
+Mot de passe : ${result.temporaryPassword}`);
+                      setCopied(true);
+                    } catch { notify('Copie impossible : sélectionnez le texte.', 'error'); }
+                  }}
+                >
+                  {copied ? 'Copié' : 'Copier'}
+                </Button>
+              </div>
+            </div>
+          </Card>
+          <p className="tiny muted">Le responsable peut modifier ce mot de passe dès sa première connexion (Paramètres → Sécurité).</p>
+          <div className="row gap-8" style={{ justifyContent: 'flex-end' }}>
+            <Button variant="secondary" onClick={close}>Fermer</Button>
+          </div>
+        </div>
+      ) : (
+        <form className="stack gap-14" onSubmit={(event) => { event.preventDefault(); create.mutate(); }}>
+          <Field label="Nom de l'établissement">
+            <Input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Complexe scolaire Les Étoiles" />
+          </Field>
+          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <Field label="Type">
+              <Select value={form.kind} onChange={(event) => setForm({ ...form, kind: event.target.value as typeof form.kind })}>
+                <option value="ecole">École</option>
+                <option value="universite">Université</option>
+                <option value="mixte">École + université</option>
+              </Select>
+            </Field>
+            <Field label="Pays">
+              <Select
+                value={form.countryCode}
+                onChange={(event) => {
+                  const country = COUNTRIES.find((entry) => entry.code === event.target.value);
+                  setForm({
+                    ...form,
+                    countryCode: event.target.value,
+                    country: country?.name ?? form.country,
+                    currency: country?.currency ?? form.currency,
+                  });
+                }}
+              >
+                {COUNTRIES.map((country) => (
+                  <option key={country.code} value={country.code}>{country.name} — {country.currency}</option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <Field label="Responsable">
+              <Input required value={form.ownerName} onChange={(event) => setForm({ ...form, ownerName: event.target.value })} placeholder="Nom & prénom" />
+            </Field>
+            <Field label="Adresse e-mail">
+              <Input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="direction@ecole.cg" />
+            </Field>
+          </div>
+          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <Field label="Téléphone" hint="Facultatif">
+              <Input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="+242 06 000 00 00" />
+            </Field>
+            <Field label="Offre" hint={`Devise : ${currentCountry?.currency ?? form.currency}`}>
+              <Select value={form.plan} onChange={(event) => setForm({ ...form, plan: event.target.value })}>
+                <option value="essentiel">Essentiel</option>
+                <option value="pro">Pro</option>
+                <option value="universite">Université</option>
+              </Select>
+            </Field>
+          </div>
+          <p className="tiny muted">Un mot de passe provisoire est généré automatiquement et envoyé au responsable.</p>
+          <div className="row gap-8" style={{ justifyContent: 'flex-end' }}>
+            <Button type="button" variant="secondary" onClick={close}>Annuler</Button>
+            <Button type="submit" variant="primary" icon={Plus} loading={create.isPending}>Créer l'espace</Button>
+          </div>
+        </form>
+      )}
+    </Modal>
   );
 }
 
@@ -938,6 +1112,245 @@ function SmsTab() {
                       </Badge>
                     </td>
                     <td className="small nowrap">{formatDateTime(message.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/* ------------------------------ Intégrations ------------------------------ */
+
+type IntegrationsPayload = {
+  supabase: { configured: boolean; url: string | null; project: string | null; auth: boolean };
+  mail: {
+    configured: boolean; provider: string | null; from: string; replyTo: string | null;
+    counts: { total: number; sent: number; pending: number; failed: number };
+    smtp: { host: string; port: number; user: string };
+  };
+  persistence: { mode: string; version: number | null; lastSyncAt: string | null; lastError: string | null };
+  sms: { configured: boolean; sender: string };
+  settings: { key: string; value: Record<string, unknown>; updatedAt: string }[];
+  emails: { id: string; to: string; subject: string; kind: string; status: string; provider: string | null; error: string | null; createdAt: string; sentAt: string | null }[];
+};
+
+function IntegrationsTab() {
+  const { success, error: toastError } = useToast();
+  const queryClient = useQueryClient();
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['platform', 'integrations'],
+    queryFn: () => get<IntegrationsPayload>('/platform/integrations'),
+  });
+  const stored = (key: string) => (data?.settings ?? []).find((entry) => entry.key === key)?.value ?? {};
+
+  const [mailForm, setMailForm] = useState({
+    provider: 'resend', from: 'School Net Academy <no-reply@schoolnet.academy>',
+    replyTo: 'businesscongo.inf@gmail.com', apiKey: '', smtpHost: '', smtpPort: '587', smtpUser: '', smtpPass: '',
+  });
+  const [testTo, setTestTo] = useState('businesscongo.inf@gmail.com');
+  const [initialised, setInitialised] = useState(false);
+
+  // Pré-remplissage depuis les réglages enregistrés
+  if (data && !initialised) {
+    const mail = stored('mail') as Record<string, unknown>;
+    setMailForm((current) => ({
+      ...current,
+      provider: String(mail.provider || (data.mail.provider ?? 'resend')),
+      from: String(mail.from || data.mail.from || current.from),
+      replyTo: String(mail.replyTo || data.mail.replyTo || current.replyTo),
+      smtpHost: String(mail.smtpHost || data.mail.smtp.host || ''),
+      smtpPort: String(mail.smtpPort || data.mail.smtp.port || 587),
+      smtpUser: String(mail.smtpUser || data.mail.smtp.user || ''),
+    }));
+    setInitialised(true);
+  }
+
+  const saveMail = useMutation({
+    mutationFn: () => put('/platform/integration/mail', {
+      provider: mailForm.provider,
+      from: mailForm.from,
+      replyTo: mailForm.replyTo,
+      apiKey: mailForm.apiKey || undefined,
+      smtpHost: mailForm.smtpHost || null,
+      smtpPort: Number(mailForm.smtpPort) || 587,
+      smtpUser: mailForm.smtpUser || null,
+      smtpPass: mailForm.smtpPass || undefined,
+    }),
+    onSuccess: () => {
+      success('Configuration e-mail enregistrée.');
+      queryClient.invalidateQueries({ queryKey: ['platform'] });
+    },
+    onError: (err) => toastError(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
+  });
+
+  const testMail = useMutation({
+    mutationFn: () => post<{ ok: boolean; status: string; error?: string }>('/platform/integration/mail/test', { to: testTo }),
+    onSuccess: (result) => {
+      if (result.status === 'envoye') success(`E-mail de test envoyé à ${testTo}.`);
+      else toastError(result.error ?? "Envoi impossible : vérifiez la configuration.");
+      queryClient.invalidateQueries({ queryKey: ['platform'] });
+    },
+    onError: (err) => toastError(err instanceof ApiError ? err.message : 'Test impossible.'),
+  });
+
+  if (isLoading) {
+    return <Card className="card-pad"><TableSkeleton rows={4} cols={3} /></Card>;
+  }
+
+  const mail = data?.mail;
+  const supabase = data?.supabase;
+  const persistence = data?.persistence;
+
+  return (
+    <div className="stack gap-16">
+      <div className="grid grid-3">
+        <Card className="card-pad">
+          <div className="row gap-10">
+            <span className={`status-dot ${supabase?.configured ? 'on' : 'off'}`} />
+            <div className="grow">
+              <div className="strong">Supabase</div>
+              <div className="tiny muted">{supabase?.configured ? supabase.project : 'Non configuré'}</div>
+            </div>
+            <Badge tone={supabase?.configured ? 'success' : 'neutral'}>{supabase?.configured ? 'Connecté' : 'Inactif'}</Badge>
+          </div>
+          <p className="small muted" style={{ marginTop: 10 }}>
+            Persistance des données et envoi des e-mails de réinitialisation.
+          </p>
+        </Card>
+        <Card className="card-pad">
+          <div className="row gap-10">
+            <span className={`status-dot ${mail?.configured ? 'on' : 'off'}`} />
+            <div className="grow">
+              <div className="strong">E-mails</div>
+              <div className="tiny muted">{mail?.configured ? (mail.provider === 'resend' ? 'Resend' : 'SMTP') : 'Aucun expéditeur'}</div>
+            </div>
+            <Badge tone={mail?.configured ? 'success' : 'warning'}>{mail?.configured ? 'Actif' : 'À configurer'}</Badge>
+          </div>
+          <p className="small muted" style={{ marginTop: 10 }}>
+            {mail?.counts.sent ?? 0} envoyés · {mail?.counts.pending ?? 0} en attente · {mail?.counts.failed ?? 0} échecs
+          </p>
+        </Card>
+        <Card className="card-pad">
+          <div className="row gap-10">
+            <span className={`status-dot ${persistence?.mode === 'supabase' ? 'on' : 'off'}`} />
+            <div className="grow">
+              <div className="strong">Persistance</div>
+              <div className="tiny muted">{persistence?.mode === 'supabase' ? 'Supabase (durable)' : 'Locale (/tmp)'}</div>
+            </div>
+            <Badge tone={persistence?.mode === 'supabase' ? 'success' : 'warning'}>
+              {persistence?.mode === 'supabase' ? 'Sauvegardé' : 'Éphémère'}
+            </Badge>
+          </div>
+          <p className="small muted" style={{ marginTop: 10 }}>
+            {persistence?.lastSyncAt ? `Dernière sauvegarde : ${formatDateTime(persistence.lastSyncAt)}` : 'Aucune sauvegarde encore.'}
+          </p>
+        </Card>
+      </div>
+
+      <Card>
+        <div className="card-head">
+          <div>
+            <h3>Envoi des e-mails</h3>
+            <p className="small muted">
+              Réservations, reçus de paiement, newsletter, liens de réinitialisation : tout passe par ce fournisseur.
+            </p>
+          </div>
+          <Button size="sm" variant="secondary" icon={RefreshCw} onClick={() => refetch()}>Actualiser</Button>
+        </div>
+        <div className="card-body stack gap-14">
+          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <Field label="Fournisseur">
+              <Select value={mailForm.provider} onChange={(event) => setMailForm({ ...mailForm, provider: event.target.value })}>
+                <option value="resend">Resend (clé API — recommandé)</option>
+                <option value="smtp">SMTP (Gmail, Brevo, Mailjet…)</option>
+                <option value="none">Désactivé</option>
+              </Select>
+            </Field>
+            <Field label="Adresse d'expédition">
+              <Input value={mailForm.from} onChange={(event) => setMailForm({ ...mailForm, from: event.target.value })} placeholder="School Net Academy <no-reply@votre-domaine.cg>" />
+            </Field>
+          </div>
+
+          {mailForm.provider === 'resend' ? (
+            <Field label="Clé API Resend" hint="resend.com → API Keys (gratuit : 3 000 e-mails/mois).">
+              <Input type="password" value={mailForm.apiKey} onChange={(event) => setMailForm({ ...mailForm, apiKey: event.target.value })} placeholder="re_••••••••" />
+            </Field>
+          ) : mailForm.provider === 'smtp' ? (
+            <div className="grid" style={{ gridTemplateColumns: '2fr 1fr 2fr 2fr', gap: 14 }}>
+              <Field label="Serveur SMTP">
+                <Input value={mailForm.smtpHost} onChange={(event) => setMailForm({ ...mailForm, smtpHost: event.target.value })} placeholder="smtp.brevo.com" />
+              </Field>
+              <Field label="Port">
+                <Input value={mailForm.smtpPort} onChange={(event) => setMailForm({ ...mailForm, smtpPort: event.target.value })} placeholder="587" />
+              </Field>
+              <Field label="Utilisateur">
+                <Input value={mailForm.smtpUser} onChange={(event) => setMailForm({ ...mailForm, smtpUser: event.target.value })} placeholder="apikey@…" />
+              </Field>
+              <Field label="Mot de passe / clé">
+                <Input type="password" value={mailForm.smtpPass} onChange={(event) => setMailForm({ ...mailForm, smtpPass: event.target.value })} placeholder="••••••••" />
+              </Field>
+            </div>
+          ) : null}
+
+          <Field label="Adresse de réponse" hint="Les réponses des établissements arrivent ici.">
+            <Input value={mailForm.replyTo} onChange={(event) => setMailForm({ ...mailForm, replyTo: event.target.value })} />
+          </Field>
+
+          <div className="row gap-10 wrap">
+            <Button variant="primary" icon={MailCheck} loading={saveMail.isPending} onClick={() => saveMail.mutate()}>
+              Enregistrer la configuration
+            </Button>
+            <div className="row gap-8" style={{ alignItems: 'center' }}>
+              <Input value={testTo} onChange={(event) => setTestTo(event.target.value)} placeholder="votre@adresse.com" style={{ minWidth: 260 }} />
+              <Button variant="secondary" icon={Send} loading={testMail.isPending} onClick={() => testMail.mutate()}>
+                Envoyer un test
+              </Button>
+            </div>
+          </div>
+          {!mail?.configured && (
+            <div className="callout warning">
+              <AlertTriangle size={17} />
+              <div>
+                <strong>Aucun expéditeur configuré</strong>
+                <p className="small">
+                  Les messages (identifiants, reçus, newsletter) sont conservés en file d’attente et seront envoyés
+                  dès qu’un fournisseur sera actif. La réinitialisation de mot de passe fonctionne déjà via Supabase.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card>
+        <div className="card-head">
+          <h3>Derniers e-mails</h3>
+          <Badge tone="neutral">{(data?.emails ?? []).length} messages</Badge>
+        </div>
+        {(data?.emails ?? []).length === 0 ? (
+          <div className="card-body">
+            <EmptyState title="Aucun e-mail" description="Les confirmations d'inscription, reçus et campagnes apparaîtront ici." icon={Mail} />
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead><tr><th>Destinataire</th><th>Objet</th><th>Type</th><th>Statut</th><th>Date</th></tr></thead>
+              <tbody>
+                {(data?.emails ?? []).map((email) => (
+                  <tr key={email.id}>
+                    <td className="strong nowrap">{email.to}</td>
+                    <td className="small">{email.subject}</td>
+                    <td className="small muted">{email.kind}</td>
+                    <td>
+                      <Badge tone={email.status === 'envoye' ? 'success' : email.status === 'echec' ? 'danger' : 'warning'}>
+                        {email.status === 'envoye' ? 'envoyé' : email.status === 'echec' ? 'échec' : 'en attente'}
+                      </Badge>
+                    </td>
+                    <td className="small nowrap">{formatDateTime(email.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>

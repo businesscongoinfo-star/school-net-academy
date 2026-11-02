@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 import { all, get, run, now, uid } from '../db.js';
@@ -8,6 +9,10 @@ import {
   PLATFORM_ROLES, notify, subscriberAudience, ensurePlatformSeed,
   FX_RATES, SUPPORTED_CURRENCIES, convert, formatMoney,
 } from '../platform.js';
+import { sendMail, welcomeEmail, newsletterEmail, mailerStatus, recentEmails, emailBrand } from '../mailer.js';
+import { getSetting, setSetting, publicSettings, mailConfig, mailReady, smsConfig } from '../settings.js';
+import { syncAuthUser, deleteAuthUser, supabaseStatus, logEvent } from '../supabase.js';
+import { persistenceStatus } from '../persist.js';
 
 const router = Router();
 
@@ -18,6 +23,13 @@ function invoiceReference() {
   const year = new Date().getFullYear();
   const row = get('SELECT COUNT(*) AS c FROM subscriptions');
   return `SUB-${year}-${String((row?.c ?? 0) + 1).padStart(4, '0')}`;
+}
+
+/** Mot de passe provisoire lisible (sans caractères ambigus) : Sna-XXXX-XXXX. */
+function generatedPassword() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const block = (size) => Array.from({ length: size }, () => alphabet[crypto.randomInt(alphabet.length)]).join('');
+  return `Sna-${block(4)}-${block(4)}`;
 }
 
 function addDays(days) {
@@ -107,6 +119,21 @@ router.post('/signup', asyncHandler(async (req, res) => {
     link: '/app',
   });
 
+  // Compte miroir Supabase Auth + e-mail de bienvenue réel
+  await syncAuthUser({ email, password: data.password, name: data.adminName.trim(), metadata: { tenant: data.schoolName.trim() } })
+    .catch(() => null);
+  await sendMail({
+    to: email,
+    kind: 'bienvenue',
+    ...welcomeEmail({
+      name: data.adminName.trim(),
+      tenantName: data.schoolName.trim(),
+      email,
+      loginUrl: '/connexion',
+    }),
+  }).catch(() => null);
+  await logEvent('tenant_signup', { tenantId, email, kind: data.kind, country: data.countryCode });
+
   const { token, expiresAt } = createSession(userId);
   res.setHeader('Set-Cookie', sessionCookie(token));
   const tenant = get('SELECT * FROM tenants WHERE id = ?', tenantId);
@@ -119,6 +146,89 @@ router.post('/signup', asyncHandler(async (req, res) => {
     access: accessState(tenant),
     expiresAt,
     trialDays: TRIAL_DAYS,
+  });
+}));
+
+/* ------------------- Création d'un établissement (équipe) ----------------- */
+
+/**
+ * Création d'un établissement par l'équipe : le compte propriétaire est créé
+ * avec un mot de passe provisoire généré, affiché à l'opérateur et envoyé par
+ * e-mail au client quand un fournisseur est configuré.
+ */
+router.post('/tenants', requirePlatform('manager', 'closer'), asyncHandler(async (req, res) => {
+  const data = parseBody(z.object({
+    name: z.string().min(3, "Nom de l'établissement requis.").max(120),
+    kind: z.enum(['ecole', 'universite', 'mixte']).default('ecole'),
+    country: z.string().min(2).max(80),
+    countryCode: z.string().min(2).max(3),
+    currency: z.string().min(3).max(3),
+    ownerName: z.string().min(3, 'Nom du responsable requis.').max(80),
+    email: z.string().email('Adresse e-mail invalide.').max(160),
+    phone: z.string().max(40).nullable().optional(),
+    plan: z.string().max(20).optional(),
+    sendEmail: z.boolean().optional(),
+  }), req.body);
+
+  const email = data.email.toLowerCase().trim();
+  if (get('SELECT id FROM users WHERE lower(email) = ?', email)) {
+    throw badRequest('Un compte existe déjà avec cette adresse.');
+  }
+
+  const tenantId = uid('tnt');
+  const userId = uid('usr');
+  const ts = now();
+  const plan = planById(data.plan ?? 'pro');
+  const password = generatedPassword();
+
+  run(
+    `INSERT INTO tenants (id, name, kind, country, country_code, currency, email, phone, status, plan,
+       trial_ends_at, seats, notes, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'essai', ?, ?, ?, ?, ?, ?)`,
+    tenantId, data.name.trim(), data.kind, data.country, data.countryCode.toUpperCase(),
+    data.currency.toUpperCase(), email, data.phone ?? null, plan?.id ?? 'pro',
+    trialEndsAt(TRIAL_DAYS), plan?.seats ?? 10,
+    `Créé par ${req.user.name} — essai gratuit de ${TRIAL_DAYS} jours`, ts, ts,
+  );
+  run(
+    `INSERT INTO users (id, email, password_hash, name, role, phone, title, avatar_color, platform_role,
+       tenant_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'admin', ?, 'Direction', '#0f766e', NULL, ?, ?, ?)`,
+    userId, email, hashPassword(password), data.ownerName.trim(), data.phone ?? null, tenantId, ts, ts,
+  );
+  run('UPDATE tenants SET owner_id = ? WHERE id = ?', userId, tenantId);
+
+  notify({
+    userId, tenantId, kind: 'bienvenue',
+    title: `Bienvenue sur School Net Academy, ${data.name.trim()} !`,
+    body: `Votre espace est prêt. Identifiant : ${email}. Votre essai gratuit de ${TRIAL_DAYS} jours commence aujourd'hui.`,
+    link: '/app',
+  });
+
+  const emailResult = data.sendEmail === false
+    ? { status: 'ignore' }
+    : await sendMail({
+      to: email,
+      kind: 'bienvenue',
+      ...welcomeEmail({
+        name: data.ownerName.trim(),
+        tenantName: data.name.trim(),
+        email,
+        temporaryPassword: password,
+        loginUrl: '/connexion',
+      }),
+    }).catch(() => ({ status: 'echec' }));
+
+  await syncAuthUser({ email, password, name: data.ownerName.trim() }).catch(() => null);
+  await logEvent('tenant_created', { tenantId, email, by: req.user.email });
+
+  const tenant = get('SELECT * FROM tenants WHERE id = ?', tenantId);
+  res.status(201).json({
+    tenant: tenantPublic(tenant),
+    owner: { id: userId, email, name: data.ownerName.trim() },
+    temporaryPassword: password,
+    emailStatus: emailResult.status,
+    message: `Espace créé. Mot de passe provisoire : ${password}`,
   });
 }));
 
@@ -396,9 +506,23 @@ router.post('/staff', requirePlatform('manager'), asyncHandler(async (req, res) 
     body: `Votre accès ${PLATFORM_ROLES[data.platformRole]?.label ?? ''} est actif. Pensez à changer votre mot de passe.`,
     link: '/plateforme',
   });
+  const emailResult = await sendMail({
+    to: email,
+    kind: 'bienvenue',
+    ...welcomeEmail({
+      name: data.name.trim(),
+      tenantName: 'Équipe School Net Academy',
+      email,
+      temporaryPassword: data.password ? null : password,
+      loginUrl: '/connexion',
+    }),
+  }).catch(() => ({ status: 'echec' }));
+  await syncAuthUser({ email, password, name: data.name.trim() }).catch(() => null);
+
   res.status(201).json({
     member: { id, name: data.name.trim(), email, platformRole: data.platformRole, phone: data.phone ?? null },
     temporaryPassword: data.password ? null : password,
+    emailStatus: emailResult.status,
   });
 }));
 
@@ -425,6 +549,7 @@ router.patch('/staff/:id', requirePlatform('manager'), asyncHandler(async (req, 
 }));
 
 router.delete('/staff/:id', requirePlatform('manager'), asyncHandler(async (req, res) => {
+  void deleteAuthUser;
   const member = get('SELECT * FROM users WHERE id = ? AND platform_role IS NOT NULL', req.params.id);
   if (!member) throw notFound('Membre introuvable.');
   if (member.platform_role === 'owner') throw badRequest('Le propriétaire ne peut pas être supprimé.');
@@ -484,11 +609,148 @@ router.post('/newsletter', requirePlatform('manager', 'marketing'), asyncHandler
 router.post('/newsletter/:id/send', requirePlatform('manager', 'marketing'), asyncHandler(async (req, res) => {
   const campaign = get('SELECT * FROM newsletter_campaigns WHERE id = ?', req.params.id);
   if (!campaign) throw notFound('Campagne introuvable.');
-  const recipients = subscriberAudience(campaign.audience).length;
+
+  const audience = subscriberAudience(campaign.audience);
+  const base = (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+  const results = { envoye: 0, en_attente: 0, echec: 0, total: 0 };
+
+  for (const subscriber of audience) {
+    const email = String(subscriber.email ?? '').trim();
+    if (!email) continue;
+    results.total += 1;
+    const unsubscribeUrl = `${base}/desabonnement?email=${encodeURIComponent(email)}`;
+    const message = newsletterEmail({ subject: campaign.subject, body: campaign.body, unsubscribeUrl });
+    const sent = await sendMail({ to: email, kind: 'newsletter', ...message });
+    results[sent.status] = (results[sent.status] ?? 0) + 1;
+  }
+
+  const delivered = results.envoye;
   run("UPDATE newsletter_campaigns SET status = 'envoyee', recipients = ?, sent_at = ? WHERE id = ?",
-    recipients, now(), campaign.id);
-  res.json({ ok: true, recipients });
+    results.total, now(), campaign.id);
+  await logEvent('newsletter_sent', { campaign: campaign.id, ...results });
+
+  res.json({
+    ok: true,
+    recipients: results.total,
+    delivered,
+    attempted: results.total,
+    failed: results.echec,
+    queued: results.en_attente,
+    configured: mailReady(),
+    message: mailReady()
+      ? `Campagne envoyée à ${delivered} destinataire(s).`
+      : "Aucun fournisseur e-mail configuré : les messages sont en file d'attente (Intégrations → E-mail).",
+  });
 }));
+
+/* --------------------------- Accès à un espace client --------------------- */
+
+/**
+ * « Ouvrir l'espace » : le super administrateur entre dans l'espace d'un
+ * établissement pour l'accompagner (paramétrage initial, support). Jeton à
+ * usage unique, valable 15 minutes, tracé dans le journal.
+ */
+router.post('/tenants/:id/impersonate', requirePlatform('owner', 'manager', 'support'), asyncHandler(async (req, res) => {
+  const tenant = get('SELECT * FROM tenants WHERE id = ?', req.params.id);
+  if (!tenant) throw notFound('Établissement introuvable.');
+  const owner = (tenant.owner_id && get('SELECT * FROM users WHERE id = ?', tenant.owner_id))
+    || get("SELECT * FROM users WHERE tenant_id = ? AND platform_role IS NULL AND role = 'admin' ORDER BY created_at LIMIT 1", tenant.id);
+  if (!owner) throw badRequest("Cet établissement n'a pas encore de compte administrateur.");
+
+  const token = crypto.randomBytes(24).toString('hex');
+  run(
+    `INSERT INTO impersonation_tokens (token, user_id, created_by, tenant_id, expires_at, used_at, created_at)
+     VALUES (?, ?, ?, ?, ?, NULL, ?)`,
+    token, owner.id, req.user.id, tenant.id,
+    new Date(Date.now() + 15 * 60 * 1000).toISOString(), now(),
+  );
+  await logEvent('impersonation_token', { tenantId: tenant.id, by: req.user.email, target: owner.email });
+  res.json({ url: `/api/auth/impersonate?token=${token}`, expiresIn: 900, email: owner.email });
+}));
+
+/* ------------------------------ Intégrations ------------------------------ */
+
+router.get('/integrations', requirePlatform('manager', 'support', 'marketing', 'finance', 'closer'), (req, res) => {
+  const mail = mailerStatus();
+  res.json({
+    supabase: supabaseStatus(),
+    mail: { ...mail, smtp: { host: mailConfig().smtp.host, port: mailConfig().smtp.port, user: mailConfig().smtp.user } },
+    persistence: persistenceStatus(),
+    sms: { configured: Boolean(smsConfig().url && smsConfig().apiKey), sender: smsConfig().sender },
+    settings: publicSettings(),
+    emails: recentEmails(30),
+    brand: { site: emailBrand.site, contact: emailBrand.contact },
+  });
+});
+
+router.put('/integration/mail', requirePlatform('owner', 'manager'), asyncHandler(async (req, res) => {
+  const data = parseBody(z.object({
+    provider: z.enum(['resend', 'smtp', 'none']),
+    from: z.string().max(160).optional(),
+    replyTo: z.string().max(160).optional(),
+    apiKey: z.string().max(200).nullable().optional(),
+    smtpHost: z.string().max(160).nullable().optional(),
+    smtpPort: z.coerce.number().int().min(1).max(65535).nullable().optional(),
+    smtpUser: z.string().max(160).nullable().optional(),
+    smtpPass: z.string().max(200).nullable().optional(),
+  }), req.body);
+
+  const current = getSetting('mail', {}) || {};
+  const next = {
+    ...current,
+    provider: data.provider === 'none' ? '' : data.provider,
+    from: data.from ?? current.from,
+    replyTo: data.replyTo ?? current.replyTo,
+  };
+  // On ne remplace un secret que s'il est fourni (l'interface renvoie des •••)
+  if (data.apiKey !== undefined && !String(data.apiKey ?? '').startsWith('•••')) next.apiKey = data.apiKey ?? '';
+  if (data.smtpHost !== undefined) next.smtpHost = data.smtpHost ?? '';
+  if (data.smtpPort !== undefined && data.smtpPort !== null) next.smtpPort = data.smtpPort;
+  if (data.smtpUser !== undefined) next.smtpUser = data.smtpUser ?? '';
+  if (data.smtpPass !== undefined && !String(data.smtpPass ?? '').startsWith('•••')) next.smtpPass = data.smtpPass ?? '';
+
+  setSetting('mail', next);
+  await logEvent('mail_settings_updated', { provider: next.provider });
+  res.json({ ok: true, mail: mailerStatus(), configured: mailReady() });
+}));
+
+router.post('/integration/mail/test', requirePlatform('owner', 'manager'), asyncHandler(async (req, res) => {
+  const data = parseBody(z.object({ to: z.string().email().max(160) }), req.body);
+  const result = await sendMail({
+    to: data.to,
+    kind: 'test',
+    subject: 'Test de configuration e-mail — School Net Academy',
+    html: `<p>Ce message confirme que l’envoi d’e-mails fonctionne depuis School Net Academy.</p>
+           <p>Expéditeur : <strong>${emailBrand.name}</strong></p>`,
+  });
+  res.json({ ok: result.status === 'envoye', ...result, configured: mailReady(), mail: mailerStatus() });
+}));
+
+router.put('/integration/sms', requirePlatform('owner', 'manager'), asyncHandler(async (req, res) => {
+  const data = parseBody(z.object({
+    url: z.string().max(300).nullable().optional(),
+    apiKey: z.string().max(200).nullable().optional(),
+    sender: z.string().max(30).nullable().optional(),
+  }), req.body);
+  const current = getSetting('sms', {}) || {};
+  const next = { ...current };
+  if (data.url !== undefined) next.url = data.url ?? '';
+  if (data.apiKey !== undefined && !String(data.apiKey ?? '').startsWith('•••')) next.apiKey = data.apiKey ?? '';
+  if (data.sender !== undefined) next.sender = data.sender ?? 'SchoolNet';
+  setSetting('sms', next);
+  res.json({ ok: true, sms: { configured: Boolean(smsConfig().url && smsConfig().apiKey) } });
+}));
+
+router.post('/emails/:id/retry', requirePlatform('owner', 'manager', 'support'), asyncHandler(async (req, res) => {
+  const row = get('SELECT * FROM email_outbox WHERE id = ?', req.params.id);
+  if (!row) throw notFound('Message introuvable.');
+  run("UPDATE email_outbox SET status = 'en_attente', error = NULL WHERE id = ?", row.id);
+  res.json({ ok: true, message: 'Message replacé en file d’attente. Vérifiez la configuration e-mail.' });
+}));
+
+router.get('/emails', requirePlatform('manager', 'support', 'marketing', 'finance', 'owner'), (req, res) => {
+  res.json({ items: recentEmails(100), ...mailerStatus() });
+});
 
 /* ----------------------------------- SMS --------------------------------- */
 

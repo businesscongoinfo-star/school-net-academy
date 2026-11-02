@@ -7,6 +7,34 @@ const DB_FILE = process.env.DB_FILE || path.join(DATA_DIR, 'school-net.db');
 
 fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
 
+export const dbFile = () => DB_FILE;
+
+/**
+ * Handle paresseux : permet de restaurer l'instantané Supabase *avant* d'ouvrir
+ * le fichier SQLite (voir persist.js), y compris en serverless.
+ */
+let handle = null;
+let dirty = false;
+let writeHook = null;
+
+export const isDirty = () => dirty;
+export const clearDirty = () => { dirty = false; };
+export function onWrite(fn) { writeHook = fn; }
+
+function markDirty() {
+  dirty = true;
+  try { writeHook?.(); } catch { /* la persistance ne doit jamais casser une écriture */ }
+}
+
+export function openDatabase() {
+  if (handle) return handle;
+  fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
+  handle = new DatabaseSync(DB_FILE);
+  handle.exec('PRAGMA journal_mode = WAL;');
+  handle.exec('PRAGMA foreign_keys = ON;');
+  return handle;
+}
+
 
 const PLATFORM_SCHEMA = `
 CREATE TABLE IF NOT EXISTS tenants (
@@ -97,15 +125,53 @@ CREATE TABLE IF NOT EXISTS password_resets (
   used_at TEXT,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS impersonation_tokens (
+  token TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  created_by TEXT,
+  tenant_id TEXT,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS email_outbox (
+  id TEXT PRIMARY KEY,
+  to_email TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'transactionnel',
+  status TEXT NOT NULL DEFAULT 'en_attente',
+  provider TEXT,
+  error TEXT,
+  created_at TEXT NOT NULL,
+  sent_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT,
+  updated_at TEXT NOT NULL
+);
 `;
 
-export const db = new DatabaseSync(DB_FILE);
-db.exec('PRAGMA journal_mode = WAL;');
-db.exec('PRAGMA foreign_keys = ON;');
+/** Façade conservant l'API d'origine (`db.prepare`, `db.exec`) sur un handle paresseux. */
+export const db = {
+  prepare: (sql) => openDatabase().prepare(sql),
+  exec: (sql) => {
+    const result = openDatabase().exec(sql);
+    if (!/^\s*(PRAGMA|BEGIN|COMMIT|ROLLBACK|SELECT)/i.test(sql)) markDirty();
+    return result;
+  },
+};
 
-export const all = (sql, ...params) => db.prepare(sql).all(...params);
-export const get = (sql, ...params) => db.prepare(sql).get(...params) ?? null;
-export const run = (sql, ...params) => db.prepare(sql).run(...params);
+export const all = (sql, ...params) => openDatabase().prepare(sql).all(...params);
+export const get = (sql, ...params) => openDatabase().prepare(sql).get(...params) ?? null;
+export const run = (sql, ...params) => {
+  const result = openDatabase().prepare(sql).run(...params);
+  markDirty();
+  return result;
+};
 
 export const now = () => new Date().toISOString();
 

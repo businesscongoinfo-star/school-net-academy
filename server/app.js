@@ -7,7 +7,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { migrate, isEmpty } from './db.js';
+import { migrate, isEmpty, isDirty, onWrite } from './db.js';
+import { restore, flush, scheduleSync, persistenceStatus, persistenceMode } from './persist.js';
+import { supabaseStatus, syncAuthUser } from './supabase.js';
+import { mailerStatus } from './mailer.js';
 import { seed, resetDatabase } from './seed.js';
 import { requireAuth, verifyPassword, createSession, hashPassword, userFromRequest } from './auth.js';
 import { recentActivity } from './helpers.js';
@@ -34,19 +37,59 @@ import platformRoutes, { ensurePlatformSeed } from './routes/platform.js';
 import notificationRoutes from './routes/notifications.js';
 import newsletterRoutes from './routes/newsletter.js';
 import aiRoutes from './routes/ai.js';
-import { tenantOf, accessState } from './platform.js';
+import { tenantOf, accessState, ensureSuperAdmin } from './platform.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(__dirname, '..', 'web', 'dist');
 const PORT = Number(process.env.PORT || 3000);
 
-migrate();
-ensurePlatformSeed();
-if (isEmpty() || process.env.SEED === 'force') {
-  if (process.env.SEED === 'force') resetDatabase();
-  console.log('→ Initialisation des données de démonstration…');
-  console.log('  ', seed());
-}
+/**
+ * Démarrage asynchrone, exécuté une seule fois par instance :
+ *   1. restauration de l'instantané Supabase (persistance réelle) ;
+ *   2. migration du schéma SQLite local ;
+ *   3. données de démonstration si la base est vide ;
+ *   4. compte super administrateur réel (variables d'environnement) ;
+ *   5. première sauvegarde.
+ * `ready` est attendu avant de servir la moindre requête (voir api/index.js).
+ */
+let bootResult = null;
+
+export const ready = (async () => {
+  const restored = await restore();
+  migrate();
+  onWrite(() => scheduleSync());
+
+  if (isEmpty() || process.env.SEED === 'force') {
+    if (process.env.SEED === 'force') resetDatabase();
+    console.log('→ Initialisation des données de démonstration…');
+    seed();
+  }
+  ensurePlatformSeed();
+  const superAdmin = ensureSuperAdmin();
+  if (superAdmin && process.env.SUPERADMIN_PASSWORD) {
+    await syncAuthUser({
+      email: superAdmin.email,
+      password: process.env.SUPERADMIN_PASSWORD,
+      name: process.env.SUPERADMIN_NAME || 'Super administrateur',
+    }).catch(() => null);
+  }
+
+  bootResult = {
+    restored,
+    superAdmin,
+    persistence: persistenceMode(),
+    users: dbGet('SELECT COUNT(*) AS c FROM users')?.c ?? 0,
+  };
+  if (isDirty()) await flush();
+  console.log('[boot]', JSON.stringify(bootResult));
+  return bootResult;
+})().catch((error) => {
+  console.error('[boot] échec :', error);
+  // On laisse l'application démarrer : mieux vaut un service dégradé qu'un 500 total.
+  return { error: String(error?.message ?? error) };
+});
+
+export const bootInfo = () => bootResult;
 
 /**
  * Mur d'abonnement : quand l'essai gratuit est terminé (ou le compte suspendu),
@@ -98,6 +141,28 @@ app.use(express.json({ limit: '1mb' }));
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
+/**
+ * Persistance : après chaque requête qui a écrit en base, on pousse l'instantané
+ * vers Supabase. `waitUntil` maintient la fonction serverless en vie le temps de
+ * l'envoi, même une fois la réponse terminée.
+ */
+app.use((req, res, next) => {
+  res.on('finish', () => {
+    if (!isDirty()) return;
+    try {
+      const pending = flush();
+      if (process.env.VERCEL) {
+        import('@vercel/functions')
+          .then(({ waitUntil }) => waitUntil(pending))
+          .catch(() => pending);
+      }
+    } catch { /* ignoré : la prochaine requête réessaiera */ }
+  });
   next();
 });
 
@@ -106,7 +171,34 @@ app.use((req, res, next) => {
 app.use(requestLogger);
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, service: 'school-net-academy', time: new Date().toISOString() });
+  res.json({
+    ok: true,
+    service: 'school-net-academy',
+    time: new Date().toISOString(),
+    persistence: persistenceStatus().mode,
+    supabase: supabaseStatus().configured,
+    email: mailerStatus().configured ? mailerStatus().provider : 'non configuré',
+  });
+});
+
+/** État des intégrations (Supabase, e-mail, persistance) — réservé à l'équipe. */
+app.get('/api/integrations/status', requireAuth, (req, res) => {
+  const isPlatformStaff = Boolean(req.user.platformRole);
+  res.json({
+    supabase: supabaseStatus(),
+    mail: mailerStatus(),
+    persistence: persistenceStatus(),
+    sms: {
+      configured: Boolean((process.env.SMS_API_URL || '').trim()),
+    },
+    runtime: {
+      platform: process.env.VERCEL ? 'vercel' : 'node',
+      region: process.env.VERCEL_REGION ?? null,
+      url: process.env.APP_URL || null,
+    },
+    canManage: ['owner', 'manager'].includes(req.user.platformRole) || isPlatformStaff === false,
+    boot: bootInfo(),
+  });
 });
 
 /**
