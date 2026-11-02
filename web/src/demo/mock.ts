@@ -14,6 +14,8 @@ const ACCOUNTS: Record<string, User['role']> = {
   'direction@schoolnet.academy': 'admin',
   'prof.mbemba@schoolnet.academy': 'teacher',
   'parent.ondongo@schoolnet.academy': 'parent',
+  'superadmin@schoolnet.academy': 'admin',
+  'essai@schoolnet.academy': 'admin',
 };
 
 /* -------------------------- Données de la plateforme ---------------------- */

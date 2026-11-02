@@ -13,6 +13,7 @@ const DEMO_ACCOUNTS = [
   { email: 'prof.mbemba@schoolnet.academy', name: 'Prosper Mbemba', role: 'Enseignant', color: '#b45309' },
   { email: 'parent.ondongo@schoolnet.academy', name: 'Nadège Ondongo', role: 'Parent', color: '#7c3aed' },
   { email: 'superadmin@schoolnet.academy', name: 'Ariane Okemba', role: 'Super admin', color: '#0e7490' },
+  { email: 'essai@schoolnet.academy', name: 'Patrick Loemba', role: 'Essai expiré', color: '#b45309' },
 ];
 
 const DEMO_PASSWORD = 'demo1234';

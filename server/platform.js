@@ -1,5 +1,6 @@
 import { all, get, run, now, uid } from './db.js';
 import { HttpError } from './helpers.js';
+import { hashPassword } from './auth.js';
 
 /* ------------------------------- Offres ---------------------------------- */
 
@@ -293,7 +294,7 @@ export function ensurePlatformSeed() {
   if (demo) {
     run("UPDATE users SET tenant_id = 'tnt_demo' WHERE tenant_id IS NULL AND platform_role IS NULL");
   }
-  // Un établissement en fin d'essai pour montrer le mur d'abonnement
+  // Un établissement en fin d'essai (4 jours restants) pour l'espace plateforme
   if (!get('SELECT id FROM tenants WHERE id = ?', 'tnt_essai')) {
     const end = new Date(Date.now() + 4 * 86400000).toISOString();
     run(
@@ -303,5 +304,29 @@ export function ensurePlatformSeed() {
       'Groupe Scolaire Les Palmiers', "Côte d'Ivoire", 'contact@lespalmiers.ci',
       '+225 07 00 00 00', end, 'Essai gratuit de 7 jours (démonstration)', ts, ts,
     );
+  }
+
+  // Un établissement dont l'essai est terminé : permet de tester le mur d'abonnement
+  // (connexion : essai@schoolnet.academy / demo1234).
+  if (!get('SELECT id FROM tenants WHERE id = ?', 'tnt_expire')) {
+    const ended = new Date(Date.now() - 86400000).toISOString();
+    run(
+      `INSERT INTO tenants (id, name, kind, country, country_code, currency, email, phone, status, plan,
+        trial_ends_at, seats, notes, created_at, updated_at)
+       VALUES ('tnt_expire', ?, 'universite', ?, 'CD', 'CDF', ?, ?, 'essai', NULL, ?, 10, ?, ?, ?)`,
+      'Institut Supérieur Les Cèdres', 'RD Congo', 'contact@lescedres.cd',
+      '+243 81 555 00 11', ended, 'Essai terminé (démonstration du blocage)', ts, ts,
+    );
+  }
+  if (!get('SELECT id FROM users WHERE lower(email) = ?', 'essai@schoolnet.academy')) {
+    const userId = 'usr_demo_essai';
+    run(
+      `INSERT INTO users (id, email, password_hash, name, role, phone, title, avatar_color,
+         platform_role, tenant_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'admin', ?, ?, '#b45309', NULL, 'tnt_expire', ?, ?)`,
+      userId, 'essai@schoolnet.academy', hashPassword('demo1234'), 'Patrick Loemba',
+      '+243 81 555 00 11', 'Direction', ts, ts,
+    );
+    run("UPDATE tenants SET owner_id = ? WHERE id = 'tnt_expire'", userId);
   }
 }

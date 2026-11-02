@@ -163,8 +163,11 @@ export function seed() {
   ];
 
   const userIds = {};
+  // Identifiants déterministes : les sessions signées (mode stateless) restent
+  // valides même si la base est régénérée sur une autre instance serverless.
+  const FIXED_USER_IDS = { admin: 'usr_demo_admin', teacher: 'usr_demo_teacher', parent: 'usr_demo_parent' };
   for (const u of users) {
-    const uid = id('usr');
+    const uid = FIXED_USER_IDS[u.role] ?? id('usr');
     userIds[u.role] = uid;
     insertUser.run(uid, u.email, password, u.name, u.role, u.phone, u.title, u.color, stamp, stamp);
   }
@@ -622,8 +625,12 @@ export function seed() {
     ['closer@schoolnet.academy', 'Yan Mabiala', 'closer', 'Closer — conversions'],
   ];
   const staffIds = [];
+  const FIXED_STAFF_IDS = {
+    owner: 'usr_platform_owner', manager: 'usr_platform_manager', support: 'usr_platform_support',
+    finance: 'usr_platform_finance', marketing: 'usr_platform_marketing', closer: 'usr_platform_closer',
+  };
   platformStaff.forEach(([email, name, platformRole, title]) => {
-    const sid = id('usr');
+    const sid = FIXED_STAFF_IDS[platformRole] ?? id('usr');
     staffIds.push({ id: sid, platformRole, name });
     db.prepare(`INSERT INTO users (id, email, password_hash, name, role, phone, title, avatar_color,
         platform_role, tenant_id, created_at, updated_at)
