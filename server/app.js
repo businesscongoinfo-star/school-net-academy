@@ -55,19 +55,40 @@ const PORT = Number(process.env.PORT || 3000);
 let bootResult = null;
 
 export const ready = (async () => {
-  const restored = await restore();
-  migrate();
+  // Chaque étape est isolée : un incident (Supabase lent, jeu de démonstration
+  // incomplet…) ne doit jamais empêcher le service de démarrer. L'état détaillé
+  // est publié dans /api/health (boot.steps) pour le diagnostic.
+  const steps = {};
+  const step = async (name, fn) => {
+    try {
+      const value = await fn();
+      steps[name] = value ?? 'ok';
+      return value;
+    } catch (error) {
+      const message = String(error?.message ?? error);
+      steps[name] = `échec : ${message}`;
+      console.error(`[boot] ${name} :`, error);
+      return null;
+    }
+  };
+
+  const restored = await step('restore', () => restore());
+  await step('migrate', () => { migrate(); return 'ok'; });
   onWrite(() => scheduleSync());
 
   if (isEmpty() || process.env.SEED === 'force') {
-    if (process.env.SEED === 'force') resetDatabase();
-    console.log('→ Initialisation des données de démonstration…');
-    seed();
+    await step('seed', () => {
+      if (process.env.SEED === 'force') resetDatabase();
+      console.log('→ Initialisation des données de démonstration…');
+      seed();
+      return 'ok';
+    });
   }
-  ensurePlatformSeed();
-  const prunedStaff = pruneDemoStaff();
-  if (prunedStaff.length) console.log('[boot] comptes de démonstration retirés :', prunedStaff.join(', '));
-  const admins = ensureSuperAdmins();
+  await step('platformSeed', () => { ensurePlatformSeed(); return 'ok'; });
+  const prunedStaff = await step('pruneStaff', () => pruneDemoStaff());
+  if (prunedStaff?.length) console.log('[boot] comptes de démonstration retirés :', prunedStaff.join(', '));
+
+  const admins = await step('superAdmin', () => ensureSuperAdmins());
   const superAdmin = admins?.primary ?? null;
   if (admins) {
     // Miroir Supabase Auth (récupération de mot de passe) : jamais bloquant pour
@@ -87,9 +108,10 @@ export const ready = (async () => {
     superAdmin,
     superAdminAliases: admins?.aliases?.map((account) => account.email) ?? [],
     persistence: persistenceMode(),
-    users: dbGet('SELECT COUNT(*) AS c FROM users')?.c ?? 0,
+    users: (() => { try { return dbGet('SELECT COUNT(*) AS c FROM users')?.c ?? 0; } catch { return null; } })(),
+    steps,
   };
-  if (isDirty()) await flush();
+  await step('flush', () => (isDirty() ? flush() : null));
   console.log('[boot]', JSON.stringify(bootResult));
   return bootResult;
 })().catch((error) => {
