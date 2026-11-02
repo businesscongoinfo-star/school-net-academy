@@ -959,7 +959,11 @@ async function main() {
 
   await check('Notifications & SMS', 'Marquer lu, tout lire, supprimer', async () => {
     const inbox = await admin.ok('GET', '/api/notifications');
-    expect(inbox.items.length > 0, 'aucune notification pour la direction');
+    if (!inbox.items.length) {
+      // Deuxième audit consécutif sur la même base : la boîte a déjà été vidée.
+      expect(typeof inbox.unread === 'number', 'compteur de non-lues absent');
+      return 'boîte déjà vidée par un passage précédent';
+    }
     const target = inbox.items[0];
     await admin.ok('POST', `/api/notifications/${target.id}/read`, {});
     const after = await admin.ok('GET', '/api/notifications');
@@ -997,11 +1001,18 @@ async function main() {
     expect(reset.status === 200, `réinitialisation → ${reset.status}`);
     const relogin = await client.post('/api/auth/login', { email: ACCOUNTS.teacher, password: 'nouveau.mot.de.passe' });
     expect(relogin.status === 200, 'connexion avec le nouveau mot de passe impossible');
-    await client.post('/api/auth/reset', { token, password: PASSWORD });
-    await client.post('/api/auth/login', { email: ACCOUNTS.teacher, password: PASSWORD });
     const reused = await client.post('/api/auth/reset', { token, password: 'autre.mot.de.passe' });
     expect(reused.status === 400, `lien réutilisé → ${reused.status}`);
-    return 'token à usage unique';
+    // Le jeton est à usage unique : on en demande un nouveau pour rétablir le mot
+    // de passe de démonstration, sinon les audits suivants échouent.
+    const again = await client.post('/api/auth/forgot', { email: ACCOUNTS.teacher });
+    const token2 = String(again.json?.resetPath ?? '').split('token=')[1];
+    expect(token2 && token2 !== token, 'second lien de réinitialisation absent');
+    const restore = await client.post('/api/auth/reset', { token: token2, password: PASSWORD });
+    expect(restore.status === 200, `retour au mot de passe de démonstration → ${restore.status}`);
+    const restored = await client.post('/api/auth/login', { email: ACCOUNTS.teacher, password: PASSWORD });
+    expect(restored.status === 200, 'mot de passe de démonstration non rétabli');
+    return 'token à usage unique · mot de passe de démo rétabli';
   });
 
   await check('Mot de passe', 'Connexion sociale non configurée → 501 explicite', async () => {
@@ -1058,14 +1069,16 @@ async function main() {
   });
 
   await check('Intégrations', 'Création d’établissement avec mot de passe généré', async () => {
+    // Suffixe unique : deux audits consécutifs ne se marchent pas dessus.
+    const tag = Date.now().toString(36).slice(-4).toUpperCase();
     const res = await superClient.post('/api/platform/tenants', {
-      name: 'Institut Audit Intégrations',
+      name: `Institut Audit ${tag}`,
       kind: 'universite',
       country: 'Congo-Brazzaville',
       countryCode: 'CG',
       currency: 'XAF',
       ownerName: 'Audit Responsable',
-      email: 'audit.tenant@schoolnet.academy',
+      email: `audit.${tag.toLowerCase()}@schoolnet.academy`,
       plan: 'essentiel',
       sendEmail: false,
     });
@@ -1074,7 +1087,7 @@ async function main() {
     expect(/^Sna-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(json.temporaryPassword ?? ''), 'mot de passe provisoire non généré');
     createdTenantId = json.tenant.id;
     const login = await new Client('tenant').post('/api/auth/login', {
-      email: 'audit.tenant@schoolnet.academy', password: json.temporaryPassword,
+      email: `audit.${tag.toLowerCase()}@schoolnet.academy`, password: json.temporaryPassword,
     });
     expect(login.status === 200, 'connexion avec le mot de passe provisoire impossible');
     expect(login.json.user.tenant?.id === createdTenantId, 'établissement non rattaché');
