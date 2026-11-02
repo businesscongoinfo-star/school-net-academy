@@ -59,6 +59,9 @@ chacun de ces profils.
   monde**, devise déduite automatiquement, offre choisie, compte de direction.
 - **Essai gratuit de 7 jours** puis blocage de l'accès (HTTP 402) et redirection vers
   `/app/abonnement` : Mobile Money, carte bancaire, virement ou espèces.
+- **Compte super administrateur** créé/mis à jour au démarrage depuis `SUPERADMIN_EMAIL` /
+  `SUPERADMIN_PASSWORD` (`SUPERADMIN_EMAIL_ALIASES` accepte des variantes d'écriture de la
+  même boîte) ; la connexion ouvre directement `/plateforme`.
 - **Super administration** `/plateforme` avec rôles serveur : `owner`, `manager`, `support`,
   `finance`, `marketing`, `closer` — chacun ne voit que ses onglets.
 - **Newsletter** : formulaire public, base d'abonnés, studio de campagnes et envoi.

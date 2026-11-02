@@ -310,9 +310,23 @@ export function pruneDemoStaff() {
   return removed;
 }
 
+/**
+ * Adresses du super administrateur.
+ * `SUPERADMIN_EMAIL` reste l'adresse principale ; `SUPERADMIN_EMAIL_ALIASES`
+ * accepte une liste (virgules) pour les variantes d'écriture d'une même boîte
+ * (par exemple « info » / « inf »), afin qu'une faute de frappe ne bloque pas
+ * l'accès à la plateforme.
+ */
+export function superAdminEmails() {
+  const list = [process.env.SUPERADMIN_EMAIL, ...String(process.env.SUPERADMIN_EMAIL_ALIASES || '').split(/[,;\s]+/)]
+    .map((email) => String(email || '').trim().toLowerCase())
+    .filter(Boolean);
+  return [...new Set(list)];
+}
+
 /** Compte super administrateur réel, créé/à jour depuis les variables d'environnement. */
-export function ensureSuperAdmin() {
-  const email = String(process.env.SUPERADMIN_EMAIL || '').trim().toLowerCase();
+export function ensureSuperAdmin(emailOverride, idOverride) {
+  const email = String(emailOverride || process.env.SUPERADMIN_EMAIL || '').trim().toLowerCase();
   const password = process.env.SUPERADMIN_PASSWORD || '';
   const name = process.env.SUPERADMIN_NAME || 'Super administrateur';
   if (!email || !password) return null;
@@ -331,7 +345,7 @@ export function ensureSuperAdmin() {
     return { id: existing.id, created: false, passwordReset: false, email };
   }
 
-  const id = process.env.SUPERADMIN_ID || 'usr_superadmin';
+  const id = idOverride || process.env.SUPERADMIN_ID || 'usr_superadmin';
   run(
     `INSERT INTO users (id, email, password_hash, name, role, phone, title, avatar_color, platform_role,
        tenant_id, created_at, updated_at)
@@ -340,6 +354,20 @@ export function ensureSuperAdmin() {
     name, ts, ts,
   );
   return { id, created: true, passwordReset: false, email };
+}
+
+/**
+ * Garantit un accès propriétaire pour chaque adresse connue du super administrateur.
+ * Renvoie le compte principal (première adresse) et la liste complète.
+ */
+export function ensureSuperAdmins() {
+  const emails = superAdminEmails();
+  if (!emails.length || !process.env.SUPERADMIN_PASSWORD) return null;
+  const primary = ensureSuperAdmin(emails[0], process.env.SUPERADMIN_ID || 'usr_superadmin');
+  const aliases = emails.slice(1)
+    .map((email, index) => ensureSuperAdmin(email, `usr_superadmin_alias${index + 1}`))
+    .filter(Boolean);
+  return { primary, aliases, emails };
 }
 
 /** Liste des abonnés « actifs » pour une campagne. */

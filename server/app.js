@@ -37,7 +37,7 @@ import platformRoutes, { ensurePlatformSeed } from './routes/platform.js';
 import notificationRoutes from './routes/notifications.js';
 import newsletterRoutes from './routes/newsletter.js';
 import aiRoutes from './routes/ai.js';
-import { tenantOf, accessState, ensureSuperAdmin, pruneDemoStaff } from './platform.js';
+import { tenantOf, accessState, ensureSuperAdmins, pruneDemoStaff } from './platform.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(__dirname, '..', 'web', 'dist');
@@ -67,18 +67,24 @@ export const ready = (async () => {
   ensurePlatformSeed();
   const prunedStaff = pruneDemoStaff();
   if (prunedStaff.length) console.log('[boot] comptes de démonstration retirés :', prunedStaff.join(', '));
-  const superAdmin = ensureSuperAdmin();
-  if (superAdmin && process.env.SUPERADMIN_PASSWORD) {
-    await syncAuthUser({
-      email: superAdmin.email,
-      password: process.env.SUPERADMIN_PASSWORD,
-      name: process.env.SUPERADMIN_NAME || 'Super administrateur',
-    }).catch(() => null);
+  const admins = ensureSuperAdmins();
+  const superAdmin = admins?.primary ?? null;
+  if (admins) {
+    // Miroir Supabase Auth pour chaque adresse : récupération de mot de passe incluse.
+    for (const account of [admins.primary, ...admins.aliases]) {
+      if (!account) continue;
+      await syncAuthUser({
+        email: account.email,
+        password: process.env.SUPERADMIN_PASSWORD,
+        name: process.env.SUPERADMIN_NAME || 'Super administrateur',
+      }).catch(() => null);
+    }
   }
 
   bootResult = {
     restored,
     superAdmin,
+    superAdminAliases: admins?.aliases?.map((account) => account.email) ?? [],
     persistence: persistenceMode(),
     users: dbGet('SELECT COUNT(*) AS c FROM users')?.c ?? 0,
   };
